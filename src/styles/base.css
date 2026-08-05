@@ -1,0 +1,162 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ink-900);
+  color: var(--paper);
+  font-family: var(--font-ui);
+  font-size: var(--step-0);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+p {
+  margin: 0;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--violet-soft);
+  color: var(--paper);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.icon {
+  width: 1.1em;
+  height: 1.1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.transport__play .icon,
+.transport__button .icon {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * The aurora.
+ *
+ * Three enormous blurred bands drifting behind everything, in the same mint →
+ * violet range the vowel space uses. Slow enough to read as light rather than
+ * as animation, and switched off entirely for reduced-motion.
+ * ------------------------------------------------------------------------ */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aurora__band {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+.aurora__band--one {
+  width: 60vw;
+  height: 60vw;
+  top: -22vw;
+  left: -12vw;
+  background: radial-gradient(circle, rgba(124, 245, 213, 0.34), transparent 68%);
+  animation: drift-one 34s var(--ease-in-out) infinite alternate;
+}
+
+.aurora__band--two {
+  width: 52vw;
+  height: 52vw;
+  top: 18vh;
+  right: -14vw;
+  background: radial-gradient(circle, rgba(179, 140, 255, 0.32), transparent 68%);
+  animation: drift-two 41s var(--ease-in-out) infinite alternate;
+}
+
+.aurora__band--three {
+  width: 46vw;
+  height: 46vw;
+  bottom: -20vw;
+  left: 28vw;
+  background: radial-gradient(circle, rgba(140, 190, 255, 0.24), transparent 70%);
+  animation: drift-three 47s var(--ease-in-out) infinite alternate;
+}
+
+@keyframes drift-one {
+  to {
+    transform: translate3d(8vw, 6vh, 0) scale(1.12);
+  }
+}
+
+@keyframes drift-two {
+  to {
+    transform: translate3d(-7vw, -5vh, 0) scale(1.08);
+  }
+}
+
+@keyframes drift-three {
+  to {
+    transform: translate3d(-5vw, 4vh, 0) scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora__band {
+    animation: none;
+  }
+}

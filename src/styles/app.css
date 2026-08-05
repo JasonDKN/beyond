@@ -1,0 +1,434 @@
+/* Shell, masthead, controls, dropzone, status strip. */
+
+#app {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* --- Masthead ------------------------------------------------------------ */
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: var(--border-soft);
+  background: linear-gradient(180deg, rgba(9, 12, 26, 0.85), rgba(9, 12, 26, 0.35));
+  backdrop-filter: blur(14px);
+}
+
+.masthead__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+/*
+ * The wordmark. "Beyond" in the display face with its own IPA transcription
+ * trailing it in mint — the app's whole premise, stated in four characters.
+ */
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  background: linear-gradient(96deg, var(--paper) 12%, var(--mint) 62%, var(--violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.wordmark__ipa {
+  font-family: var(--font-ipa);
+  font-size: var(--step--1);
+  color: var(--mint);
+  opacity: 0.55;
+  letter-spacing: 0.02em;
+}
+
+/* --- Controls ------------------------------------------------------------ */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  margin-left: auto;
+}
+
+.control {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.control__label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ghost);
+}
+
+.control__select {
+  appearance: none;
+  padding: 0.32rem 1.7rem 0.32rem 0.6rem;
+  border: var(--border-firm);
+  border-radius: var(--radius-sm);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%236c789b' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E")
+      no-repeat right 0.5rem center / 12px,
+    rgba(16, 20, 40, 0.85);
+  color: var(--paper);
+  font-size: var(--step--1);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.control__select:hover:not(:disabled) {
+  border-color: rgba(124, 245, 213, 0.45);
+}
+
+.control__select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.control--toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--step--1);
+  color: var(--paper-dim);
+  align-self: end;
+  padding-bottom: 0.35rem;
+  white-space: nowrap;
+}
+
+.control__checkbox {
+  appearance: none;
+  width: 2rem;
+  height: 1.05rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-firm);
+  background: rgba(16, 20, 40, 0.9);
+  position: relative;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.control__checkbox::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 50%;
+  background: var(--ghost);
+  transform: translateY(-50%);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.control__checkbox:checked {
+  background: var(--mint-soft);
+  border-color: rgba(124, 245, 213, 0.5);
+}
+
+.control__checkbox:checked::after {
+  transform: translate(0.95rem, -50%);
+  background: var(--mint);
+}
+
+.controls__coverage {
+  flex-basis: 100%;
+  font-size: 0.7rem;
+  color: var(--ghost);
+  text-align: right;
+}
+
+.controls__coverage.is-ok {
+  color: rgba(124, 245, 213, 0.7);
+}
+
+.controls__coverage.is-warn {
+  color: var(--amber);
+}
+
+/* --- Dropzone ------------------------------------------------------------ */
+
+.dropzone {
+  grid-row: 2;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-4);
+  padding: var(--space-7) var(--space-6);
+  text-align: center;
+  transition:
+    opacity var(--duration-mid) var(--ease-out),
+    transform var(--duration-mid) var(--ease-out);
+}
+
+.dropzone.is-hidden {
+  display: none;
+}
+
+.dropzone.is-dragging {
+  transform: scale(1.01);
+}
+
+.dropzone.is-dragging .dropzone__art {
+  filter: drop-shadow(0 0 24px rgba(124, 245, 213, 0.35));
+}
+
+/*
+ * The hero. One lyric line and its transcription, stacked so the IPA appears to
+ * bleed out of the words above it — the two systems occupying the same space.
+ * The crossfade runs slowly and forever; it is the app explaining itself.
+ */
+.dropzone__art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 5.5rem;
+  margin-bottom: var(--space-2);
+}
+
+.dropzone__line {
+  grid-area: 1 / 1;
+  font-size: var(--step-4);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.dropzone__line--text {
+  font-family: var(--font-display);
+  font-weight: 300;
+  color: var(--paper);
+  animation: hero-fade-out 9s var(--ease-in-out) infinite;
+}
+
+.dropzone__line--ipa {
+  font-family: var(--font-ipa);
+  background: linear-gradient(94deg, var(--mint), var(--sky) 55%, var(--violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: hero-fade-in 9s var(--ease-in-out) infinite;
+}
+
+@keyframes hero-fade-out {
+  0%,
+  32% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  48%,
+  82% {
+    opacity: 0;
+    filter: blur(7px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes hero-fade-in {
+  0%,
+  32% {
+    opacity: 0;
+    filter: blur(7px);
+  }
+  48%,
+  82% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(7px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropzone__line--text,
+  .dropzone__line--ipa {
+    animation: none;
+  }
+  .dropzone__line--text {
+    opacity: 0;
+  }
+}
+
+.dropzone__title {
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  font-weight: 300;
+  color: var(--paper);
+}
+
+.dropzone__body {
+  max-width: 46ch;
+  color: var(--paper-dim);
+}
+
+.dropzone__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(124, 245, 213, 0.4);
+  background: linear-gradient(180deg, rgba(124, 245, 213, 0.16), rgba(124, 245, 213, 0.06));
+  color: var(--paper);
+  font-weight: 500;
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.dropzone__button:hover {
+  transform: translateY(-1px);
+  border-color: var(--mint);
+  box-shadow: 0 12px 32px -18px rgba(124, 245, 213, 0.9);
+}
+
+.dropzone__note {
+  font-size: var(--step--1);
+  color: var(--ghost);
+  max-width: 44ch;
+}
+
+/* --- Stage -------------------------------------------------------------- */
+
+.stage {
+  grid-row: 2;
+  display: none;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  padding: var(--space-4) var(--space-6) 0;
+  gap: var(--space-4);
+}
+
+body.has-audio .stage {
+  display: grid;
+}
+
+body.has-audio .dropzone {
+  display: none;
+}
+
+.stage__score {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 22rem);
+  gap: var(--space-5);
+  min-height: 0;
+}
+
+.stage__score-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-2);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 168, 232, 0.3) transparent;
+}
+
+.stage__score-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.stage__score-scroll::-webkit-scrollbar-thumb {
+  background: rgba(140, 168, 232, 0.24);
+  border-radius: var(--radius-pill);
+}
+
+@media (max-width: 1080px) {
+  .stage__score {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .inspector {
+    max-height: 40vh;
+  }
+}
+
+/* --- Status strip -------------------------------------------------------- */
+
+.status {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6) var(--space-4);
+  border-top: var(--border-soft);
+  background: linear-gradient(0deg, rgba(9, 12, 26, 0.9), rgba(9, 12, 26, 0.3));
+  backdrop-filter: blur(14px);
+}
+
+.status__track {
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: rgba(140, 168, 232, 0.14);
+  overflow: hidden;
+}
+
+.status__bar {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--mint), var(--sky), var(--violet));
+  transition: width var(--duration-mid) var(--ease-out);
+}
+
+/* An indeterminate stage still has to feel alive — the model is working. */
+.status__bar.is-indeterminate {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--mint) 20%,
+    var(--violet) 55%,
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: sweep 1.6s linear infinite;
+}
+
+@keyframes sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
+
+.status__text {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  font-size: var(--step--1);
+}
+
+.status__message {
+  color: var(--paper-dim);
+}
+
+.status__detail {
+  color: var(--ghost);
+}
+
+.status[data-status='error'] .status__message {
+  color: var(--rose);
+}
+
+.status[data-status='error'] .status__bar {
+  background: var(--rose);
+}

@@ -1,0 +1,79 @@
+/*
+ * Beyond — design tokens.
+ *
+ * The palette is deep ink with an aurora over it: mint at the front of the
+ * mouth, violet at the back, amber for anything uncertain. That is not
+ * decoration — it is the same front/back axis the vowel chart uses, so colour
+ * carries meaning consistently from the staff to the inspector.
+ */
+
+:root {
+  /* --- Ink ------------------------------------------------------------- */
+  --ink-900: #06070f;
+  --ink-800: #090c1a;
+  --ink-700: #0f1428;
+  --ink-600: #161d38;
+  --ink-500: #202a4d;
+
+  /* --- Light ------------------------------------------------------------ */
+  --paper: #eaf1ff;
+  --paper-dim: #a9b8de;
+  --ghost: #6c789b;
+
+  /* --- Aurora ------------------------------------------------------------ */
+  --mint: #7cf5d5;
+  --sky: #8cbeff;
+  --violet: #b38cff;
+  --amber: #ffb86b;
+  --rose: #ff8fb1;
+
+  --mint-soft: rgba(124, 245, 213, 0.16);
+  --violet-soft: rgba(179, 140, 255, 0.16);
+  --amber-soft: rgba(255, 184, 107, 0.16);
+
+  /* --- Type -------------------------------------------------------------- */
+  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --font-ipa: 'Gentium Plus', 'Doulos SCS', 'Charis SIL', 'Segoe UI', Georgia, serif;
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --step--1: clamp(0.75rem, 0.72rem + 0.15vw, 0.82rem);
+  --step-0: clamp(0.875rem, 0.85rem + 0.2vw, 0.95rem);
+  --step-1: clamp(1.05rem, 1rem + 0.3vw, 1.2rem);
+  --step-2: clamp(1.3rem, 1.2rem + 0.6vw, 1.7rem);
+  --step-3: clamp(1.9rem, 1.6rem + 1.5vw, 3rem);
+  --step-4: clamp(2.6rem, 2rem + 3vw, 4.6rem);
+
+  /* --- Space, shape, motion ---------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --border-soft: 1px solid rgba(140, 168, 232, 0.13);
+  --border-firm: 1px solid rgba(140, 168, 232, 0.22);
+
+  --shadow-lift: 0 18px 48px -24px rgba(0, 0, 0, 0.9);
+  --shadow-glow: 0 0 32px -8px var(--mint-soft);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 140ms;
+  --duration-mid: 280ms;
+  --duration-slow: 620ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-mid: 0ms;
+    --duration-slow: 0ms;
+  }
+}
