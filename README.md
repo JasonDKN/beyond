@@ -79,6 +79,11 @@ Engine menu — it fabricates a timed lyric over whatever file you loaded.
 Requires Node 20.19+. WebGPU is used when the browser has it and WASM otherwise;
 the WASM path works everywhere but is several times slower.
 
+> **If `npm install` fails on `onnxruntime-node`** — that package's postinstall
+> downloads native binaries, which some networks block. Beyond only ever uses
+> the *web* build of the runtime, so `npm install --ignore-scripts` is a
+> complete fix rather than a workaround.
+
 ---
 
 ## How it is put together
