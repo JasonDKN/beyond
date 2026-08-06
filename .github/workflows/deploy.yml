@@ -1,0 +1,69 @@
+name: Deploy to GitHub Pages
+
+# Publishes on every push to main, and on demand from the Actions tab.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The permissions the Pages deployment needs. `id-token` is required for the
+# deploy step's OIDC handshake — without it the deploy fails with a confusing
+# authentication error rather than a permissions one.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it, but never queue more
+# than one behind it — only the newest commit is worth publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # --ignore-scripts skips onnxruntime-node's postinstall, which downloads
+      # native binaries for Node. Beyond only ever uses the WebAssembly build
+      # in the browser, so those binaries are dead weight and a failure point.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # A broken build should not replace a working site, so both of the above
+      # run first — the deploy job never starts if either fails.
+      - name: Build
+        env:
+          BEYOND_BASE: /beyond/
+        run: npx vite build
+
+      - name: Upload the built site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

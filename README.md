@@ -158,6 +158,34 @@ the WASM path works everywhere but is several times slower.
 
 ---
 
+## Deploying
+
+Beyond is entirely client-side — audio is decoded in the browser and never
+uploaded — so any static host will serve it.
+
+**GitHub Pages** is wired up in `.github/workflows/deploy.yml`. Every push to
+`main` typechecks, tests, builds and publishes; a failing test stops the deploy
+rather than replacing a working site with a broken one. Enable it once, under
+**Settings → Pages → Source → GitHub Actions**, and the site appears at
+`https://<user>.github.io/beyond/`.
+
+The subpath is why `vite.config.ts` reads `BEYOND_BASE`. A project site is
+served from `/beyond/`, not `/`, and without the prefix every asset 404s and
+the page loads blank. The workflow sets it; nothing else needs to know.
+
+For **Netlify or Vercel**, point them at the repo with build command
+`npm run build` and publish directory `dist`. Leave `BEYOND_BASE` unset — both
+serve from the root, and the default is `/`.
+
+One caveat on Pages: it cannot set the `Cross-Origin-Opener-Policy` and
+`Cross-Origin-Embedder-Policy` headers that multithreaded WebAssembly needs, so
+the in-browser Whisper option runs single-threaded and slowly there. The lyric
+sheet path — the one this app is built around — is unaffected. Netlify and
+Vercel can both set those headers if you want the Whisper option to be fast on
+a deployed site.
+
+---
+
 ## How it is put together
 
 ```
