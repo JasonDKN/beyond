@@ -1,20 +1,97 @@
 # Beyond
 
-**Songs, written in sound.**
+**Learn to sing a song in a language you don't speak.**
 
-Beyond takes an audio file, finds the words in it, and writes each one in the
-International Phonetic Alphabet — then lays the result across the waveform at
-the moment it was sung.
-
-It is built for the people who need to know not just *what* was sung but *how*:
-singers learning repertoire in a language they do not speak, diction coaches,
-linguists, translators, and anyone who has ever tried to work out what a lyric
-actually says.
+Beyond takes an audio file and the lyrics, and shows you — word by word, in
+time with the music — how the words are actually pronounced, which is very
+often not how they are written.
 
 ```
-Beyond      the    edge   of    every    ordinary        word
-bɪˈɑnd      ðə     ɛdʒ    ʌv    ˈɛvɚi    ˈɔɹdəˌnɛɹi      wɝd
+좋아요       우리      노래          ← what's written
+조아요                              ← what's actually said
+tɕoajo      uɾi      noɾe          ← IPA
+jo-ah-yo    oo-ree   no-reh        ← read-along
 ```
+
+That second line is the whole point. Korean spelling preserves the shape of a
+word even when the sounds change: 좋아요 keeps its ㅎ on paper although nobody
+pronounces one. Almost every romanization on a lyrics site transliterates the
+*spelling* — which is exactly why people who learn from them sound wrong. They
+are reading a form of the word that is never spoken.
+
+Beyond shows you both, and names the rule that separates them.
+
+---
+
+## Why not just use Spotify?
+
+You can't. Playback through Spotify's Web Playback SDK goes over an encrypted
+media path, so the decoded audio is never exposed to the page — and capturing
+it anyway would breach their terms. Spotify also
+[restricted much of its Web API in November 2024](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api):
+apps registered after that date get no Audio Analysis, no Audio Features, and
+no 30-second previews. Lyrics were never in the public API at all.
+
+So Beyond works from a file you own. Which turns out to be the better design
+anyway — see below.
+
+## Why not just transcribe it?
+
+Because you already know what the words are. They're printed in the sleeve.
+
+Speech recognition is the wrong tool for learning a song you have the lyrics
+to: it guesses at the one thing you already know, and on fast rap over a dense
+mix it guesses badly. So the default path inverts it — **you paste the lyrics
+and tap once per line** as the track plays. Three minutes of tapping produces
+timings a forced aligner would not beat, correct by construction, with nothing
+to second-guess.
+
+Whisper is still one menu item away for when you genuinely don't know what was
+sung.
+
+Beyond neither fetches nor ships anyone's lyrics. You supply the words.
+
+---
+
+## Working on a song
+
+1. **Drop in the audio.** A file you own — MP3, WAV, FLAC, M4A.
+2. **Paste the lyrics** into the lyric sheet panel. One line per line; section
+   markers like `[Verse 1]` are ignored.
+3. **Tap the timing.** Play the track and press **T** (or click Tap) as each
+   line begins. Tapping slightly late is normal, so 120 ms is subtracted
+   automatically. The `⟲` button on any line re-times just that one.
+4. **Build the score.** Everything below appears: staff, syllable grid,
+   layered readings, word inspector.
+5. **Practise.** `[` and `]` set an A–B loop around a phrase; `\` clears it.
+   Drop the speed to 0.5× — the pitch stays put, so it's still in key.
+
+Timings are saved per file, so closing the tab doesn't lose your work.
+
+### The four layers
+
+Each word is stacked, and each layer can be switched off as you outgrow it:
+
+| Layer | What it is |
+| --- | --- |
+| **Written** | The lyric exactly as printed |
+| **Spoken** | The same word rewritten as it's pronounced — *only shown when it differs* |
+| **IPA** | Precise phonetic transcription |
+| **Read-along** | Plain-alphabet reading you can sing from tonight |
+
+Wherever the Spoken layer appears, a sound rule fired — those are the
+teachable moments, and the status bar counts them for you.
+
+### The syllable grid
+
+Korean is syllable-timed: every Hangul block gets roughly equal duration, and
+one block is one rhythmic slot. English is stress-timed, so an English speaker
+instinctively crushes the syllables between stresses — in Korean that instinct
+is exactly wrong, and it's the main thing to unlearn.
+
+The grid shows the current line as equal cells sweeping in time. It's the
+difference between "this is too fast" and "there are eleven of them, evenly
+spaced."
 
 ---
 
@@ -79,11 +156,6 @@ Engine menu — it fabricates a timed lyric over whatever file you loaded.
 Requires Node 20.19+. WebGPU is used when the browser has it and WASM otherwise;
 the WASM path works everywhere but is several times slower.
 
-> **If `npm install` fails on `onnxruntime-node`** — that package's postinstall
-> downloads native binaries, which some networks block. Beyond only ever uses
-> the *web* build of the runtime, so `npm install --ignore-scripts` is a
-> complete fix rather than a workaround.
-
 ---
 
 ## How it is put together
@@ -110,6 +182,44 @@ separate. **Input language** decides how a line is pronounced. **Output
 language** decides what it is rendered alongside. Someone learning a Portuguese
 fado wants the IPA of the Portuguese and the meaning in English, side by side —
 those are different questions, so they are different menus.
+
+### The Korean engine
+
+`src/phonetics/g2p/ko/` is the heart of the app, and needs no dictionary at
+all. Hangul is algorithmically composed — every syllable block is
+`0xAC00 + (initial × 588) + (medial × 28) + final` — so decomposing 학 into
+ㅎ + ㅏ + ㄱ is arithmetic. What the spelling hides is the sound changes, and
+those are rules:
+
+| File | What it does |
+| --- | --- |
+| `jamo.ts` | Decompose and recompose syllable blocks |
+| `phonology.ts` | The standard pronunciation rules (표준 발음법), in order |
+| `ipa.ts` | Jamo → IPA, with voicing, palatalization, unreleased finals |
+| `respell.ts` | The plain-alphabet read-along layer |
+
+The rules, and why order matters:
+
+| Rule | Example | What happens |
+| --- | --- | --- |
+| 연음 liaison | 옷이 → 오시 | a final consonant slides into the next syllable |
+| ㅎ 탈락 | 좋아요 → 조아요 | ㅎ goes silent before a vowel |
+| 격음화 | 놓고 → 노코 | ㅎ merges with a stop and aspirates it |
+| 끝소리 규칙 | 꽃 → 꼳 | a syllable can only end in one of seven sounds |
+| 자음군 단순화 | 값 → 갑 | two-consonant finals lose one |
+| 구개음화 | 같이 → 가치 | ㄷ/ㅌ before 이 becomes ㅈ/ㅊ |
+| 유음화 | 신라 → 실라 | ㄴ and ㄹ meeting become ㄹㄹ |
+| 비음화 | 국민 → 궁민 | a stop before a nasal becomes a nasal |
+| 경음화 | 학교 → 학꾜 | a lax consonant tenses after a stop |
+
+Liaison has to run before neutralization or 옷이 comes out [오디]; palatalization
+has to see the ㅌ that liaison just moved. Each rule is tested against the
+standard example that isolates it, in `tests/korean.test.ts`.
+
+Korean pronunciations are reported as **derived**, not *guessed* — the same
+standing as an English dictionary hit. English letter-to-sound rules are a
+fallback for words the dictionary lacks; Korean rules are the actual grammar of
+the language's pronunciation.
 
 ### Adding a language
 
@@ -164,6 +274,22 @@ there — the adapter needs no changes.
 
 ---
 
+### Meaning
+
+`src/korean/morphology.ts` breaks a word into its stem plus the grammar stacked
+on it — 먹었어요 → 먹 + 었 (past) + 어요 (polite casual). Korean is
+agglutinative, so this is where the reusable learning is: a line translation
+teaches you that line, but recognising -었- teaches you every past tense you
+will ever hear.
+
+It's a suffix stripper covering the closed-class grammar — particles and verb
+endings — which is the part that repeats endlessly. Open-class stems are left
+for you to gloss yourself, and the `Glossary` class stores those in
+localStorage and exports TSV straight into Anki. Writing your own gloss for a
+word you just heard in a song you like beats reading someone else's.
+
+---
+
 ## Honest limitations
 
 - **Phone timings are estimated, not aligned.** A word's duration is
@@ -182,7 +308,18 @@ there — the adapter needs no changes.
 - **English is General American**, because that is what CMUdict describes.
   Non-rhotic and other varieties need their own lexicon.
 - **No translation engine ships.** The interface and the provider seam exist;
-  the output-language menu goes live the moment one is registered.
+  the output-language menu goes live the moment one is registered. Until then,
+  meaning comes from the morpheme breakdown and your own glossary.
+- **Korean compound-boundary effects are not handled.** ㄴ-insertion and some
+  tensification depend on knowing where one word inside a compound ends, which
+  needs morphology the engine does not have. This is the narrow band where a
+  Korean reading can be wrong, and it is why confidence is 0.92 rather than 1.
+- **Morpheme segmentation is a heuristic, not a parser.** 는 is both a topic
+  particle and a verb modifier ending, and telling them apart needs to know
+  whether the stem is a noun or a verb. The commoner reading is shown and the
+  other is named in the note. Where a split would be a coin-flip — 바다 as
+  "sea" or as a verb 바- plus -다 — the word is left whole, because inventing
+  grammar that is not there teaches something false.
 
 ---
 

@@ -36,6 +36,28 @@ export interface State {
   readonly currentTime: number;
   readonly playing: boolean;
   readonly selected: WordRef | null;
+  readonly loop: { start: number; end: number } | null;
+
+  /**
+   * Which readings of each word to show, stacked.
+   *
+   * A learner starts on the respelling and graduates to IPA; being able to
+   * hide a layer is what lets one tool serve both ends of that journey rather
+   * than being outgrown.
+   */
+  readonly layers: DisplayLayers;
+}
+
+export interface DisplayLayers {
+  /** The words as written — the lyric sheet. */
+  readonly written: boolean;
+  /** The words as actually pronounced, in their own script. */
+  readonly pronounced: boolean;
+  readonly ipa: boolean;
+  /** Plain-alphabet reading. */
+  readonly respelling: boolean;
+  /** Per-word morpheme breakdown under the line. */
+  readonly morphemes: boolean;
 }
 
 type StoreEvents = {
@@ -59,8 +81,8 @@ export class Store {
     score: null,
     progress: null,
     error: null,
-    providerId: 'whisper-local',
-    inputLanguage: 'auto',
+    providerId: 'lyrics',
+    inputLanguage: 'ko',
     outputLanguage: null,
     notation: 'ipa',
     syllableBreaks: false,
@@ -69,6 +91,14 @@ export class Store {
     currentTime: 0,
     playing: false,
     selected: null,
+    loop: null,
+    layers: {
+      written: true,
+      pronounced: true,
+      ipa: true,
+      respelling: true,
+      morphemes: false,
+    },
   };
 
   get state(): State {

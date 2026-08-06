@@ -36,7 +36,7 @@ export class ControlsView {
         value: language.tag,
         label: language.tag === 'auto' ? language.englishName : `${language.englishName} · ${language.nativeName}`,
       })),
-      'auto',
+      store.state.inputLanguage,
       (value) => {
         this.#store.patch({ inputLanguage: value as LanguageTag });
         this.#updateCoverage(this.#store.state);
@@ -106,6 +106,7 @@ export class ControlsView {
         }),
       ),
       field('Export', this.#exportSelect),
+      this.#layerToggles(),
       this.#coverage,
     );
 
@@ -136,6 +137,42 @@ export class ControlsView {
       this.#coverage.textContent = `Beyond can transcribe ${language} but has no phonetic engine for it yet — words will pass through unconverted.`;
       this.#coverage.className = 'controls__coverage is-warn';
     }
+  }
+
+  /**
+   * Which readings to stack under each word.
+   *
+   * Starting with everything on and letting layers be switched off is the
+   * right default for a beginner: you cannot ask for the layer you did not
+   * know existed. The respelling comes off first, then the IPA becomes the
+   * one you read — which is the whole progression the app is built around.
+   */
+  #layerToggles(): HTMLElement {
+    const layer = (key: keyof State['layers'], label: string, title: string): HTMLElement => {
+      const input = el('input', {
+        type: 'checkbox',
+        class: 'control__checkbox control__checkbox--small',
+        checked: this.#store.state.layers[key],
+        onchange: (event: Event) =>
+          this.#store.patch({
+            layers: {
+              ...this.#store.state.layers,
+              [key]: (event.target as HTMLInputElement).checked,
+            },
+          }),
+      });
+      return el('label', { class: 'control control--layer', title }, input, el('span', {}, label));
+    };
+
+    return el(
+      'div',
+      { class: 'controls__layers' },
+      el('span', { class: 'control__label' }, 'Show'),
+      layer('written', 'Written', 'The words exactly as they appear on the lyric sheet'),
+      layer('pronounced', 'Spoken', 'The same words respelled as they are actually pronounced'),
+      layer('ipa', 'IPA', 'Precise phonetic transcription'),
+      layer('respelling', 'Read-along', 'A plain-alphabet reading for singing straight away'),
+    );
   }
 
   #restyle(options: { notation?: Notation; syllableBreaks?: boolean }): void {

@@ -49,15 +49,26 @@ export class StatusView {
     this.#bar.classList.remove('is-indeterminate');
 
     if (state.status === 'ready' && state.score) {
-      const words = state.score.lines.reduce((sum, line) => sum + line.words.length, 0);
-      const guessed = state.score.lines
-        .flatMap((line) => line.words)
-        .filter((word) => word.source === 'rules').length;
+      const allWords = state.score.lines.flatMap((line) => line.words);
+      const words = allWords.length;
+      // Only a genuine guess counts as one. A Korean reading derived by the
+      // standard rules is not a guess, and reporting it as one would teach the
+      // user to distrust the most reliable thing on the screen.
+      const guessed = allWords.filter((word) => word.source === 'rules').length;
+      const changed = allWords.filter((word) => word.changed).length;
+
       this.#bar.style.width = '100%';
       this.#message.textContent = `${words} words · ${state.score.lines.length} lines`;
-      this.#detail.textContent = guessed
-        ? `${guessed} pronunciation${guessed === 1 ? '' : 's'} guessed from spelling`
-        : 'Every word found in the dictionary';
+
+      if (guessed > 0) {
+        this.#detail.textContent = `${guessed} pronunciation${guessed === 1 ? '' : 's'} guessed from spelling`;
+      } else if (changed > 0) {
+        // The most useful number on screen for a learner: how many words are
+        // not said the way they are written.
+        this.#detail.textContent = `${changed} word${changed === 1 ? '' : 's'} pronounced differently from the spelling`;
+      } else {
+        this.#detail.textContent = 'Every pronunciation resolved';
+      }
       return;
     }
 

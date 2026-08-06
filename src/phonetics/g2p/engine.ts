@@ -1,4 +1,4 @@
-import type { LanguageTag, Phone, PronunciationSource } from '@/core/types';
+import type { LanguageTag, Phone, PronunciationNote, PronunciationSource, Syllable } from '@/core/types';
 
 export interface Pronunciation {
   readonly phones: readonly Phone[];
@@ -7,6 +7,30 @@ export interface Pronunciation {
   readonly confidence: number;
   /** Alternative pronunciations, best-first, as IPA strings. */
   readonly variants?: readonly string[];
+
+  /**
+   * Syllables, when the engine knows them better than a generic syllabifier
+   * would. Korean does: the writing system declares syllable boundaries
+   * outright, so inferring them from sonority would be strictly worse.
+   */
+  readonly syllables?: readonly Syllable[];
+
+  /** A plain-alphabet reading for learners who do not read IPA yet. */
+  readonly respelling?: string;
+
+  /**
+   * The word rewritten in its own script as it is actually *said*, when that
+   * differs from how it is spelled. Korean 좋아요 → 조아요, French liaison,
+   * Japanese rendaku. Showing this next to the spelling is often the single
+   * most useful thing a phonetic tool can do for a learner.
+   */
+  readonly pronouncedForm?: string;
+
+  /** True when `pronouncedForm` differs from what was written. */
+  readonly changed?: boolean;
+
+  /** Which sound rules fired, so the interface can explain rather than assert. */
+  readonly notes?: readonly PronunciationNote[];
 }
 
 /**

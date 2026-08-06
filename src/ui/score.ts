@@ -1,5 +1,5 @@
 import type { State, WordRef } from '@/core/store';
-import type { PhoneticScore } from '@/core/types';
+import type { PhoneticScore, PhoneticWord } from '@/core/types';
 import { clear, el } from './dom';
 
 /**
@@ -22,6 +22,7 @@ export class ScoreView {
   #wordNodes: HTMLElement[][] = [];
   #lineNodes: HTMLElement[] = [];
   #renderedScore: PhoneticScore | null = null;
+  #layerKey = '';
   #activeLine = -1;
   #activeWord: WordRef | null = null;
   #follow = true;
@@ -40,10 +41,15 @@ export class ScoreView {
   }
 
   update(state: State): void {
-    if (state.score !== this.#renderedScore) {
+    // Rebuild on a new score, or when the visible layers change — both alter
+    // the DOM structurally, and neither happens often enough to optimize.
+    const layerKey = Object.values(state.layers).join(',');
+    if (state.score !== this.#renderedScore || layerKey !== this.#layerKey) {
+      const isNewScore = state.score !== this.#renderedScore;
       this.#renderedScore = state.score;
+      this.#layerKey = layerKey;
       this.#build(state);
-      this.#follow = true;
+      if (isNewScore) this.#follow = true;
     }
     this.#applyPlayhead(state);
     this.#applySelection(state.selected);
@@ -66,22 +72,39 @@ export class ScoreView {
       const nodes: HTMLElement[] = [];
 
       line.words.forEach((word, wordIndex) => {
+        const layers = state.layers;
+
+        // Stacked readings of one word. The pronounced layer only appears when
+        // it actually differs from the spelling — showing 노래 twice teaches
+        // nothing, but showing 좋아요 above 조아요 teaches the whole rule.
+        const stack: (HTMLElement | null)[] = [
+          layers.written ? el('span', { class: 'score__lyric' }, word.text) : null,
+          layers.pronounced && word.changed && word.pronouncedForm
+            ? el('span', { class: 'score__spoken' }, word.pronouncedForm)
+            : null,
+          layers.ipa ? el('span', { class: 'score__ipa', lang: 'und-fonipa' }, word.ipa) : null,
+          layers.respelling && word.respelling
+            ? el('span', { class: 'score__respell' }, word.respelling)
+            : null,
+        ];
+
         const node = el(
           'button',
           {
             class: `score__word source-${word.source}`,
             type: 'button',
             'data-confidence': word.confidence.toFixed(2),
-            title: `${word.text} · ${word.ipa}\n${describeSource(word.source)} · confidence ${(word.confidence * 100).toFixed(0)}%`,
+            title: this.#tooltip(word),
             onclick: () => {
               this.#callbacks.onSelectWord(lineIndex, wordIndex);
               this.#callbacks.onSeek(word.startSec);
             },
           },
-          el('span', { class: 'score__lyric' }, word.text),
-          el('span', { class: 'score__ipa', lang: 'und-fonipa' }, word.ipa),
+          ...stack.filter((part): part is HTMLElement => part !== null),
         );
         if (word.confidence < 0.6) node.classList.add('is-uncertain');
+        // A word whose sound departs from its spelling is the teachable one.
+        if (word.changed) node.classList.add('is-changed');
         nodes.push(node);
         wordRow.appendChild(node);
       });
@@ -107,6 +130,20 @@ export class ScoreView {
       this.#lineNodes.push(lineNode);
       this.element.appendChild(lineNode);
     });
+  }
+
+  /** Everything known about a word, for the hover tooltip. */
+  #tooltip(word: PhoneticWord): string {
+    const rows = [`${word.text}  ·  ${word.ipa}`];
+    if (word.changed && word.pronouncedForm) {
+      rows.push(`written ${word.text} → said ${word.pronouncedForm}`);
+    }
+    if (word.respelling) rows.push(word.respelling);
+    for (const note of word.notes ?? []) {
+      rows.push(`${note.label} — ${note.explanation}`);
+    }
+    rows.push(`${describeSource(word.source)} · ${(word.confidence * 100).toFixed(0)}%`);
+    return rows.join('\n');
   }
 
   #applyPlayhead(state: State): void {
@@ -167,6 +204,8 @@ export function describeSource(source: string): string {
       return 'From the pronouncing dictionary';
     case 'lexicon-inflected':
       return 'Built from a dictionary stem';
+    case 'derived':
+      return 'Derived by the standard pronunciation rules';
     case 'rules':
       return 'Guessed by letter-to-sound rules';
     case 'user':

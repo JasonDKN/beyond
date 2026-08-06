@@ -1,6 +1,8 @@
 import type {
   LanguageTag,
   Notation,
+  Phone,
+  Syllable,
   PhoneticLine,
   PhoneticScore,
   PhoneticWord,
@@ -122,7 +124,14 @@ function phonemizeWord(
 
   const timed = distributeDurations(pronunciation.phones, word.startSec, word.endSec);
   const phones = applySingingStyle(timed, options.singing);
-  const syllables = syllabify(phones);
+
+  // An engine that knows its own syllable structure beats a generic
+  // syllabifier. Korean's writing system declares the boundaries outright, so
+  // inferring them from sonority would be strictly worse — and for a
+  // syllable-timed language those boundaries drive the rhythm display too.
+  const syllables = pronunciation.syllables
+    ? retimeSyllables(pronunciation.syllables, phones)
+    : syllabify(phones);
 
   const ipa = renderIpa(syllables, {
     notation: options.notation,
@@ -148,9 +157,39 @@ function phonemizeWord(
     endSec: word.endSec,
   };
 
-  return pronunciation.variants && pronunciation.variants.length > 0
-    ? { ...base, variants: pronunciation.variants }
-    : base;
+  return {
+    ...base,
+    ...(pronunciation.variants?.length ? { variants: pronunciation.variants } : {}),
+    ...(pronunciation.respelling ? { respelling: pronunciation.respelling } : {}),
+    ...(pronunciation.pronouncedForm ? { pronouncedForm: pronunciation.pronouncedForm } : {}),
+    ...(pronunciation.changed !== undefined ? { changed: pronunciation.changed } : {}),
+    ...(pronunciation.notes?.length ? { notes: pronunciation.notes } : {}),
+  };
+}
+
+/**
+ * Reattach playback timings to engine-supplied syllables.
+ *
+ * The engine builds syllables before anything is known about the audio; the
+ * timing pass then walks the flat phone list. This zips them back together by
+ * position so the syllables carry the same timed phones the staff draws.
+ */
+function retimeSyllables(
+  syllables: readonly Syllable[],
+  timedPhones: readonly Phone[],
+): Syllable[] {
+  let cursor = 0;
+  const take = (count: number): Phone[] => {
+    const slice = timedPhones.slice(cursor, cursor + count);
+    cursor += count;
+    return slice;
+  };
+  return syllables.map((syllable) => ({
+    onset: take(syllable.onset.length),
+    nucleus: take(syllable.nucleus.length),
+    coda: take(syllable.coda.length),
+    stress: syllable.stress,
+  }));
 }
 
 /** Re-render an existing score with different display options — no re-run of G2P. */

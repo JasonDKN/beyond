@@ -9,6 +9,7 @@ type PlayerEvents = {
   /** Fires once per animation frame while playing, for the staff to follow. */
   tick: number;
   ratechange: number;
+  loopchange: { start: number; end: number } | null;
 };
 
 /**
@@ -26,6 +27,7 @@ export class Player {
   #element = new Audio();
   #frame = 0;
   #source: AudioSource | null = null;
+  #loop: { start: number; end: number } | null = null;
 
   constructor() {
     this.#element.preload = 'auto';
@@ -123,10 +125,43 @@ export class Player {
     this.events.clear();
   }
 
+  // -------------------------------------------------------------------------
+  // A–B loop
+  //
+  // The single most useful tool for learning a fast passage: you cannot learn
+  // a line you hear once per playthrough. Enforced on the rAF tick rather than
+  // with the element's own `loop`, which only loops the whole file.
+  // -------------------------------------------------------------------------
+
+  get loop(): { start: number; end: number } | null {
+    return this.#loop;
+  }
+
+  setLoop(start: number, end: number): void {
+    // Tolerate the points being set in either order — you often find the end
+    // of a phrase before you find its beginning.
+    const [from, to] = start <= end ? [start, end] : [end, start];
+    if (to - from < 0.15) return; // too short to be a phrase; ignore the fumble
+    this.#loop = { start: from, end: to };
+    this.events.emit('loopchange', this.#loop);
+    if (this.currentTime < from || this.currentTime > to) this.seek(from);
+  }
+
+  clearLoop(): void {
+    this.#loop = null;
+    this.events.emit('loopchange', null);
+  }
+
   #startTicking(): void {
     if (this.#frame) return;
     const tick = (): void => {
-      this.events.emit('tick', this.#element.currentTime);
+      const time = this.#element.currentTime;
+      if (this.#loop && time >= this.#loop.end) {
+        this.#element.currentTime = this.#loop.start;
+        this.events.emit('tick', this.#loop.start);
+      } else {
+        this.events.emit('tick', time);
+      }
       this.#frame = requestAnimationFrame(tick);
     };
     this.#frame = requestAnimationFrame(tick);

@@ -5,6 +5,7 @@ import '@/styles/base.css';
 import '@/styles/app.css';
 import '@/styles/staff.css';
 import '@/styles/score.css';
+import '@/styles/learn.css';
 import { mountApp } from '@/ui/app';
 
 const root = document.querySelector<HTMLElement>('#app');

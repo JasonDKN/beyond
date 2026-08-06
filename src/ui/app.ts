@@ -5,9 +5,11 @@ import { ControlsView } from './controls';
 import { clear, el } from './dom';
 import { DropzoneView } from './dropzone';
 import { InspectorView } from './inspector';
+import { LyricsPanelView } from './lyricsPanel';
 import { ScoreView } from './score';
 import { StaffView } from './staff';
 import { StatusView } from './status';
+import { SyllableGridView } from './syllableGrid';
 import { TransportView } from './transport';
 
 /**
@@ -34,7 +36,21 @@ export function mountApp(root: HTMLElement): void {
   const controls = new ControlsView(store);
   const transport = new TransportView(player, (zoom) => staff.setZoom(zoom));
   const status = new StatusView();
-  const dropzone = new DropzoneView((file) => void runPipeline(store, file));
+  const grid = new SyllableGridView((seconds) => player.seek(seconds));
+  const lyricsPanel = new LyricsPanelView(store, player, {
+    onBuild: () => void rebuildScore(),
+  });
+
+  let currentFile: File | null = null;
+  const dropzone = new DropzoneView((file) => {
+    currentFile = file;
+    void runPipeline(store, file);
+  });
+
+  /** Re-run the pipeline from the file already loaded — used after tapping. */
+  const rebuildScore = async (): Promise<void> => {
+    if (currentFile) await runPipeline(store, currentFile);
+  };
 
   const stage = el(
     'main',
@@ -44,11 +60,12 @@ export function mountApp(root: HTMLElement): void {
       { class: 'stage__staff' },
       el('div', { class: 'staff__frame' }, staff.element),
       transport.element,
+      grid.element,
     ),
     el(
       'section',
       { class: 'stage__score' },
-      el('div', { class: 'stage__score-scroll' }, scoreView.element),
+      el('div', { class: 'stage__score-scroll' }, lyricsPanel.element, scoreView.element),
       inspector.element,
     ),
   );
@@ -57,7 +74,17 @@ export function mountApp(root: HTMLElement): void {
   root.append(masthead(controls), dropzone.element, stage, status.element);
 
   // --- state → views -------------------------------------------------------
-  const views = [dropzone, staff, scoreView, inspector, controls, transport, status];
+  const views = [
+    dropzone,
+    staff,
+    scoreView,
+    inspector,
+    controls,
+    transport,
+    status,
+    grid,
+    lyricsPanel,
+  ];
   store.events.on('change', (state) => {
     for (const view of views) view.update(state);
     document.body.classList.toggle('has-audio', Boolean(state.audio));
@@ -69,6 +96,7 @@ export function mountApp(root: HTMLElement): void {
   player.events.on('play', () => store.patch({ playing: true }));
   player.events.on('pause', () => store.patch({ playing: false }));
   player.events.on('ended', () => store.patch({ playing: false }));
+  player.events.on('loopchange', (loop) => store.patch({ loop }));
 
   store.events.on('change', (state) => {
     if (state.audio && player.source !== state.audio) {

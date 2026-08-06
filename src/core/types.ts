@@ -79,7 +79,8 @@ export interface Transcript {
 export type PronunciationSource =
   | 'lexicon' // exact dictionary hit
   | 'lexicon-inflected' // dictionary hit after stripping a regular suffix
-  | 'rules' // grapheme-to-phoneme fallback
+  | 'derived' // systematically derived from a regular orthography
+  | 'rules' // grapheme-to-phoneme guess for an unknown word
   | 'user' // hand-corrected in the inspector
   | 'passthrough'; // no engine for this language yet
 
@@ -103,6 +104,17 @@ export interface Syllable {
   readonly stress: 0 | 1 | 2;
 }
 
+/** One sound rule that fired while deriving a pronunciation. */
+export interface PronunciationNote {
+  /** Index of the syllable it applied to. */
+  readonly at: number;
+  /** Machine-readable rule id, e.g. `liaison`, `tensification`. */
+  readonly rule: string;
+  /** The rule's name in the language's own terms, e.g. `연음`. */
+  readonly label: string;
+  readonly explanation: string;
+}
+
 export interface PhoneticWord {
   readonly text: string;
   /** Lowercased, punctuation-stripped form actually sent to the G2P engine. */
@@ -117,6 +129,28 @@ export interface PhoneticWord {
   readonly endSec: number;
   /** Alternative pronunciations from the lexicon, offered in the inspector. */
   readonly variants?: readonly string[];
+
+  /** Plain-alphabet reading for learners who do not read IPA yet. */
+  readonly respelling?: string;
+  /** The word in its own script as actually said, when that differs from the spelling. */
+  readonly pronouncedForm?: string;
+  /** True when the spelling and the spoken form diverge — the teachable moment. */
+  readonly changed?: boolean;
+  /** Sound rules that fired, for the inspector to explain. */
+  readonly notes?: readonly PronunciationNote[];
+  /** Morphological breakdown, for agglutinative languages. */
+  readonly morphemes?: readonly Morpheme[];
+}
+
+/** One piece of a word, with what it contributes to the meaning. */
+export interface Morpheme {
+  readonly text: string;
+  /** `stem`, `particle`, `ending`, `suffix`. */
+  readonly kind: 'stem' | 'particle' | 'ending' | 'suffix';
+  /** Short gloss: "topic marker", "past tense", "want to". */
+  readonly gloss: string;
+  /** Longer note shown on demand. */
+  readonly detail?: string;
 }
 
 export interface PhoneticLine {

@@ -3,6 +3,7 @@ import type { G2PEngine } from './g2p/engine';
 import { primarySubtag } from './g2p/engine';
 import { englishG2P } from './g2p/en';
 import { spanishG2P } from './g2p/es';
+import { koreanG2P } from './g2p/ko';
 import { passthroughG2P } from './g2p/generic';
 
 /**
@@ -37,3 +38,4 @@ export function supportedG2PLanguages(): string[] {
 
 registerG2P(englishG2P);
 registerG2P(spanishG2P);
+registerG2P(koreanG2P);
