@@ -30,9 +30,19 @@ export class StatusView {
   update(state: State): void {
     this.element.dataset['status'] = state.status;
 
+    this.element.classList.toggle('has-notice', state.notice !== null && state.status !== 'error');
+
     if (state.status === 'error') {
       this.#bar.style.width = '100%';
       this.#message.textContent = state.error ?? 'Something went wrong.';
+      this.#detail.textContent = '';
+      return;
+    }
+
+    // A next step, not a failure.
+    if (state.notice && !state.progress) {
+      this.#bar.style.width = '0%';
+      this.#message.textContent = state.notice;
       this.#detail.textContent = '';
       return;
     }

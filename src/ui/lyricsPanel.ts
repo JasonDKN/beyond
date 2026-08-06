@@ -277,6 +277,7 @@ export class LyricsPanelView {
     const total = sheet.lines.length;
 
     this.#rowNodes.forEach((row, index) => row.classList.toggle('is-next', index === this.#cursor));
+    this.#scrollToCursor();
 
     if (total === 0) {
       this.#summary.textContent = '';
@@ -285,6 +286,38 @@ export class LyricsPanelView {
     }
     this.#summary.textContent = `${timed} of ${total} lines timed`;
     this.#buildButton.disabled = timed === 0;
+  }
+
+  /**
+   * Keep the line you are about to tap in the middle of the list.
+   *
+   * While tapping you are listening, not reading — your eyes should never have
+   * to hunt for where the highlight went. Centring the next line means it is
+   * always in the same place on screen, and the lines around it give you the
+   * context to see what is coming.
+   *
+   * Positions are computed against the list box rather than using
+   * `scrollIntoView`, which would also scroll the panel's ancestors and jerk
+   * the whole page while you are trying to keep time.
+   */
+  #scrollToCursor(): void {
+    const row = this.#rowNodes[this.#cursor];
+    if (!row) return;
+    const list = this.#list;
+    if (list.scrollHeight <= list.clientHeight) return;
+
+    // Measured with rects rather than `offsetTop`, which is relative to the
+    // nearest *positioned* ancestor — not necessarily the scroll container.
+    // When those differ, offsetTop is wildly too large and every scroll pins
+    // to the bottom of the list.
+    const listRect = list.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const delta = rowRect.top - listRect.top - (list.clientHeight - rowRect.height) / 2;
+    const target = list.scrollTop + delta;
+    const top = Math.max(0, Math.min(target, list.scrollHeight - list.clientHeight));
+
+    if (Math.abs(top - list.scrollTop) < 2) return;
+    list.scrollTo({ top, behavior: 'smooth' });
   }
 
   #highlightPlayhead(currentTime: number): void {

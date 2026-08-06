@@ -11,6 +11,17 @@ import { DEFAULT_SINGING_OPTIONS, type SingingOptions } from '@/phonetics/singin
 
 export type Status = 'idle' | 'working' | 'ready' | 'error';
 
+/**
+ * The two things you actually do with this app, made explicit.
+ *
+ * They want opposite layouts. Timing a song is a text task: you need to see
+ * many lines at once and know which one is next. Practising it is a reading
+ * task: you need one line large, in time, with its phonetics under it. Trying
+ * to serve both from one screen is what made the follow-along behaviour feel
+ * arbitrary — it was following in a layout built for editing.
+ */
+export type ViewMode = 'annotation' | 'learning';
+
 export interface WordRef {
   readonly lineIndex: number;
   readonly wordIndex: number;
@@ -24,6 +35,13 @@ export interface State {
   readonly score: PhoneticScore | null;
   readonly progress: Progress | null;
   readonly error: string | null;
+  /**
+   * A "here's what to do next" message, as distinct from a failure.
+   *
+   * Loading a song before pasting its lyrics is the normal first step, not an
+   * error, and colouring it red taught the wrong thing about a working app.
+   */
+  readonly notice: string | null;
 
   readonly providerId: string;
   readonly inputLanguage: LanguageTag | 'auto';
@@ -37,6 +55,16 @@ export interface State {
   readonly playing: boolean;
   readonly selected: WordRef | null;
   readonly loop: { start: number; end: number } | null;
+
+  readonly mode: ViewMode;
+  /**
+   * Whether the score scrolls itself to keep up with the music.
+   *
+   * Lives in the store rather than inside the view so the transport can show
+   * its state. Turned off only by scrolling by hand — never by clicking a
+   * word, which is a thing you do *while* following.
+   */
+  readonly followScore: boolean;
 
   /**
    * Which readings of each word to show, stacked.
@@ -81,6 +109,7 @@ export class Store {
     score: null,
     progress: null,
     error: null,
+    notice: null,
     providerId: 'lyrics',
     inputLanguage: 'ko',
     outputLanguage: null,
@@ -92,6 +121,8 @@ export class Store {
     playing: false,
     selected: null,
     loop: null,
+    mode: 'annotation',
+    followScore: true,
     layers: {
       written: true,
       pronounced: true,

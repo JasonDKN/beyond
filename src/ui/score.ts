@@ -13,6 +13,8 @@ import { clear, el } from './dom';
 export interface ScoreCallbacks {
   onSeek(seconds: number): void;
   onSelectWord(lineIndex: number, wordIndex: number): void;
+  /** Fired when the reader scrolls by hand, which pauses follow-along. */
+  onUserScroll(): void;
 }
 
 export class ScoreView {
@@ -27,13 +29,40 @@ export class ScoreView {
   #activeWord: WordRef | null = null;
   #follow = true;
 
+  /** The element that actually scrolls; supplied by the app shell. */
+  #scroller: HTMLElement | null = null;
+  /**
+   * Set while we are scrolling the score ourselves.
+   *
+   * Without this, our own smooth scroll fires `scroll` events that look
+   * identical to the reader's, and follow-along would switch itself off the
+   * instant it started working.
+   */
+  #selfScrolling = false;
+  #selfScrollTimer = 0;
+
   constructor(callbacks: ScoreCallbacks) {
     this.#callbacks = callbacks;
     this.element = el('div', { class: 'score', role: 'list' });
-    // Scrolling by hand means you want to read, not be dragged along.
-    this.element.addEventListener('pointerdown', () => {
-      this.#follow = false;
-    });
+  }
+
+  /**
+   * Watch the scroll container so a hand scroll can pause follow-along.
+   *
+   * Clicking a word deliberately does *not* pause it — inspecting a word is
+   * something you do while following along, and treating a click as "stop
+   * following" is what made this behave unpredictably before.
+   */
+  attachScroller(scroller: HTMLElement): void {
+    this.#scroller = scroller;
+    scroller.addEventListener(
+      'scroll',
+      () => {
+        if (this.#selfScrolling) return;
+        this.#callbacks.onUserScroll();
+      },
+      { passive: true },
+    );
   }
 
   set follow(value: boolean) {
@@ -41,15 +70,15 @@ export class ScoreView {
   }
 
   update(state: State): void {
+    this.#follow = state.followScore;
+
     // Rebuild on a new score, or when the visible layers change — both alter
     // the DOM structurally, and neither happens often enough to optimize.
     const layerKey = Object.values(state.layers).join(',');
     if (state.score !== this.#renderedScore || layerKey !== this.#layerKey) {
-      const isNewScore = state.score !== this.#renderedScore;
       this.#renderedScore = state.score;
       this.#layerKey = layerKey;
       this.#build(state);
-      if (isNewScore) this.#follow = true;
     }
     this.#applyPlayhead(state);
     this.#applySelection(state.selected);
@@ -96,6 +125,13 @@ export class ScoreView {
             'data-confidence': word.confidence.toFixed(2),
             title: this.#tooltip(word),
             onclick: () => {
+              // Clicking a button focuses it, and focusing something near the
+              // edge of the viewport makes the browser scroll it into view.
+              // That scroll is a consequence of the click, not a reading
+              // gesture, so it must not be mistaken for one — otherwise
+              // inspecting a word at the bottom of the screen silently stops
+              // follow-along, which is the bug this whole change is fixing.
+              this.#suppressScrollPause();
               this.#callbacks.onSelectWord(lineIndex, wordIndex);
               this.#callbacks.onSeek(word.startSec);
             },
@@ -118,7 +154,10 @@ export class ScoreView {
             class: 'score__timecode',
             type: 'button',
             title: 'Play from here',
-            onclick: () => this.#callbacks.onSeek(line.startSec),
+            onclick: () => {
+              this.#suppressScrollPause();
+              this.#callbacks.onSeek(line.startSec);
+            },
           },
           formatTimecode(line.startSec),
         ),
@@ -130,6 +169,53 @@ export class ScoreView {
       this.#lineNodes.push(lineNode);
       this.element.appendChild(lineNode);
     });
+  }
+
+  /**
+   * Ignore scroll events for a moment, because we just caused one.
+   *
+   * Used around deliberate interactions — clicking a word, jumping to a
+   * timecode — where the browser may scroll as a side effect.
+   */
+  #suppressScrollPause(durationMs = 500): void {
+    this.#selfScrolling = true;
+    clearTimeout(this.#selfScrollTimer);
+    this.#selfScrollTimer = window.setTimeout(() => {
+      this.#selfScrolling = false;
+    }, durationMs);
+  }
+
+  /**
+   * Bring a line into view, centred, without tripping the user-scroll guard.
+   *
+   * Positions are computed against the scroll container rather than handed to
+   * `scrollIntoView`, which would also scroll ancestors and can drag the whole
+   * page around when the score sits inside another scrolling region.
+   */
+  #scrollTo(lineIndex: number): void {
+    const node = this.#lineNodes[lineIndex];
+    const scroller = this.#scroller;
+    if (!node || !scroller) return;
+
+    // Rects, not `offsetTop`: the latter is relative to the nearest positioned
+    // ancestor, which is not reliably the scroll container.
+    const scrollerRect = scroller.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const delta = nodeRect.top - scrollerRect.top - (scroller.clientHeight - nodeRect.height) / 2;
+    const target = scroller.scrollTop + delta;
+    const top = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
+    if (Math.abs(top - scroller.scrollTop) < 2) return;
+
+    this.#selfScrolling = true;
+    scroller.scrollTo({ top, behavior: 'smooth' });
+
+    // Smooth scrolling emits events for a while after the call returns, so the
+    // guard has to outlive the animation or the tail end reads as a hand
+    // scroll and switches follow off.
+    clearTimeout(this.#selfScrollTimer);
+    this.#selfScrollTimer = window.setTimeout(() => {
+      this.#selfScrolling = false;
+    }, 700);
   }
 
   /** Everything known about a word, for the hover tooltip. */
@@ -168,9 +254,9 @@ export class ScoreView {
       this.#lineNodes[this.#activeLine]?.classList.remove('is-active');
       this.#lineNodes[lineIndex]?.classList.add('is-active');
       this.#activeLine = lineIndex;
-      if (this.#follow && state.playing) {
-        this.#lineNodes[lineIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      // Scroll whenever the line changes, not only during playback — jumping
+      // to a line while paused should bring it into view too.
+      if (this.#follow) this.#scrollTo(lineIndex);
     }
 
     if (

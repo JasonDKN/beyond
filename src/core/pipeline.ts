@@ -25,6 +25,7 @@ export async function runPipeline(store: Store, file: File, signal?: AbortSignal
     store.patch({
       status: 'working',
       error: null,
+      notice: null,
       score: null,
       envelope: null,
       onsets: [],
@@ -46,9 +47,17 @@ export async function runPipeline(store: Store, file: File, signal?: AbortSignal
     const provider = getProvider(store.state.providerId);
     if (!provider) throw new Error(`Unknown transcription provider: ${store.state.providerId}`);
 
+    // Not being ready is not the same as being broken. Loading a song before
+    // pasting its lyrics is simply step one of two, so say what to do next
+    // rather than reporting a failure.
     const availability = await provider.available();
     if (!availability.ok) {
-      throw new Error(availability.reason ?? `${provider.label} is not available.`);
+      store.patch({
+        status: 'idle',
+        progress: null,
+        notice: availability.reason ?? `${provider.label} is not ready yet.`,
+      });
+      return;
     }
 
     const transcript = await provider.transcribe({

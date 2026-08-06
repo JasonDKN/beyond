@@ -5,7 +5,9 @@ import { ControlsView } from './controls';
 import { clear, el } from './dom';
 import { DropzoneView } from './dropzone';
 import { InspectorView } from './inspector';
+import { audioKeyFor, getSheet } from '@/transcription/providers/lyrics';
 import { LyricsPanelView } from './lyricsPanel';
+import { defaultModeFor, ModeSwitchView, savedModeFor, saveModeFor } from './modeSwitch';
 import { ScoreView } from './score';
 import { StaffView } from './staff';
 import { StatusView } from './status';
@@ -30,15 +32,24 @@ export function mountApp(root: HTMLElement): void {
   const scoreView = new ScoreView({
     onSeek: (seconds) => player.seek(seconds),
     onSelectWord: (lineIndex, wordIndex) => store.patch({ selected: { lineIndex, wordIndex } }),
+    // Scrolling by hand means you want to read. It stays paused until you say
+    // otherwise — pressing Follow, or loading a different song.
+    onUserScroll: () => {
+      if (store.state.followScore) store.patch({ followScore: false });
+    },
   });
 
   const inspector = new InspectorView();
   const controls = new ControlsView(store);
-  const transport = new TransportView(player, (zoom) => staff.setZoom(zoom));
+  const transport = new TransportView(
+    player,
+    (zoom) => staff.setZoom(zoom),
+    () => store.patch({ followScore: true }),
+  );
   const status = new StatusView();
   const grid = new SyllableGridView((seconds) => player.seek(seconds));
   const lyricsPanel = new LyricsPanelView(store, player, {
-    onBuild: () => void rebuildScore(),
+    onBuild: () => void buildAndStudy(),
   });
 
   let currentFile: File | null = null;
@@ -47,10 +58,36 @@ export function mountApp(root: HTMLElement): void {
     void runPipeline(store, file);
   });
 
-  /** Re-run the pipeline from the file already loaded — used after tapping. */
-  const rebuildScore = async (): Promise<void> => {
-    if (currentFile) await runPipeline(store, currentFile);
+  /**
+   * Build the score and move to Learning.
+   *
+   * Pressing "Build the score" is the moment the job changes from timing to
+   * practising, so the view changes with it — unless you have said otherwise
+   * for this song, in which case your choice stands.
+   */
+  const buildAndStudy = async (): Promise<void> => {
+    if (!currentFile) return;
+    await runPipeline(store, currentFile);
+    if (store.state.status !== 'ready') return;
+    const key = currentAudioKey();
+    if (key && savedModeFor(key)) return;
+    store.patch({ mode: 'learning', followScore: true });
   };
+
+  const modeSwitch = new ModeSwitchView(store, (mode) => {
+    // An explicit choice outranks the default, and is remembered for this song.
+    const key = currentAudioKey();
+    if (key) saveModeFor(key, mode);
+    store.patch({ mode });
+  });
+
+  const scoreScroll = el(
+    'div',
+    { class: 'stage__score-scroll' },
+    lyricsPanel.element,
+    scoreView.element,
+  );
+  scoreView.attachScroller(scoreScroll);
 
   const stage = el(
     'main',
@@ -62,16 +99,11 @@ export function mountApp(root: HTMLElement): void {
       transport.element,
       grid.element,
     ),
-    el(
-      'section',
-      { class: 'stage__score' },
-      el('div', { class: 'stage__score-scroll' }, lyricsPanel.element, scoreView.element),
-      inspector.element,
-    ),
+    el('section', { class: 'stage__score' }, scoreScroll, inspector.element),
   );
 
   clear(root);
-  root.append(masthead(controls), dropzone.element, stage, status.element);
+  root.append(masthead(controls, modeSwitch), dropzone.element, stage, status.element);
 
   // --- state → views -------------------------------------------------------
   const views = [
@@ -84,10 +116,51 @@ export function mountApp(root: HTMLElement): void {
     status,
     grid,
     lyricsPanel,
+    modeSwitch,
   ];
   store.events.on('change', (state) => {
     for (const view of views) view.update(state);
     document.body.classList.toggle('has-audio', Boolean(state.audio));
+    // One class drives the whole layout switch; the CSS does the rest.
+    document.body.classList.toggle('mode-annotation', state.mode === 'annotation');
+    document.body.classList.toggle('mode-learning', state.mode === 'learning');
+  });
+
+  // --- choosing the mode ---------------------------------------------------
+  //
+  // Open on the job actually in front of you: still lines to time → Annotation;
+  // everything timed and a score built → Learning. An explicit choice for this
+  // song always wins.
+  let lastAudioKey = '';
+
+  function currentAudioKey(): string {
+    const audio = store.state.audio;
+    return audio ? audioKeyFor(audio.name, audio.durationSec) : '';
+  }
+
+  function pickMode(): void {
+    const key = currentAudioKey();
+    if (!key) return;
+
+    const chosen = savedModeFor(key);
+    const sheet = getSheet();
+    const suggested = defaultModeFor({
+      hasScore: store.state.score !== null,
+      totalLines: sheet.lines.length,
+      timedLines: sheet.lines.filter((line) => line.startSec !== null).length,
+    });
+    const next = chosen ?? suggested;
+    if (next !== store.state.mode) store.patch({ mode: next });
+  }
+
+  store.events.on('change', (state) => {
+    const key = currentAudioKey();
+    // A different song: re-evaluate the mode and start following again.
+    if (key && key !== lastAudioKey) {
+      lastAudioKey = key;
+      if (!state.followScore) store.patch({ followScore: true });
+      pickMode();
+    }
   });
 
   // --- player → state ------------------------------------------------------
@@ -138,7 +211,7 @@ export function mountApp(root: HTMLElement): void {
   store.patch({});
 }
 
-function masthead(controls: ControlsView): HTMLElement {
+function masthead(controls: ControlsView, modeSwitch: ModeSwitchView): HTMLElement {
   return el(
     'header',
     { class: 'masthead' },
@@ -152,6 +225,7 @@ function masthead(controls: ControlsView): HTMLElement {
         'bɪˈjɑnd',
       ),
     ),
+    modeSwitch.element,
     controls.element,
   );
 }

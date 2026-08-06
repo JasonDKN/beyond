@@ -98,14 +98,14 @@ export class ControlsView {
       field('Sung in', this.#inputLanguage),
       field('Alongside', this.#outputLanguage),
       field('Engine', this.#provider),
-      field('Notation', this.#notation),
+      field('Notation', this.#notation, 'notation'),
       toggle('Syllable breaks', false, (checked) => this.#restyle({ syllableBreaks: checked })),
       toggle('Sung vowels', true, (checked) =>
         this.#store.patch({
           singing: { ...this.#store.state.singing, enabled: checked },
         }),
       ),
-      field('Export', this.#exportSelect),
+      field('Export', this.#exportSelect, 'export'),
       this.#layerToggles(),
       this.#coverage,
     );
@@ -217,10 +217,11 @@ function select(
   return node;
 }
 
-function field(label: string, control: HTMLElement): HTMLElement {
+/** `modifier` tags a field so a view mode can hide the ones it does not need. */
+function field(label: string, control: HTMLElement, modifier?: string): HTMLElement {
   return el(
     'label',
-    { class: 'control' },
+    { class: modifier ? `control control--${modifier}` : 'control' },
     el('span', { class: 'control__label' }, label),
     control,
   );

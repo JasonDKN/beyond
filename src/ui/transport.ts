@@ -20,10 +20,28 @@ export class TransportView {
   #volumeIcon: HTMLButtonElement;
   /** Level to restore when unmuting. */
   #lastAudibleVolume = 1;
+  #followButton: HTMLButtonElement;
+  #onResumeFollow: () => void;
 
-  constructor(player: Player, onZoom: (zoom: number) => void) {
+  constructor(player: Player, onZoom: (zoom: number) => void, onResumeFollow: () => void) {
     this.#player = player;
     this.#onZoom = onZoom;
+    this.#onResumeFollow = onResumeFollow;
+
+    // Follow-along, made visible. The old behaviour switched itself off
+    // silently when you clicked a word, which is why it seemed to work only
+    // sometimes. Now it only stops when you scroll by hand, and when it does,
+    // this button lights up to say so and to put it back.
+    this.#followButton = el(
+      'button',
+      {
+        class: 'transport__follow',
+        type: 'button',
+        title: 'Scroll the score to keep up with the music',
+        onclick: () => this.#onResumeFollow(),
+      },
+      'Follow',
+    ) as HTMLButtonElement;
 
     this.#loopA = el(
       'button',
@@ -153,6 +171,7 @@ export class TransportView {
         this.#loopB,
         this.#loopClear,
       ),
+      this.#followButton,
       el(
         'div',
         { class: 'transport__group transport__group--right' },
@@ -219,6 +238,11 @@ export class TransportView {
       state.audio?.durationSec ?? 0,
     )}`;
     this.element.classList.toggle('is-disabled', !state.audio);
+
+    this.#followButton.classList.toggle('is-on', state.followScore);
+    this.#followButton.classList.toggle('is-paused', !state.followScore);
+    this.#followButton.textContent = state.followScore ? 'Following' : 'Follow';
+    this.#followButton.disabled = state.score === null;
 
     const looping = state.loop !== null;
     this.#loopB.classList.toggle('is-set', looping);

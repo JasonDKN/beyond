@@ -1,0 +1,263 @@
+/*
+ * The two views.
+ *
+ * One DOM, two layouts, switched by a class on <body>. Keeping the markup
+ * identical means the audio never reloads and the playhead never jumps when
+ * you change mode — you are re-arranging the same session, not restarting it.
+ */
+
+/* --- The switch itself ---------------------------------------------------- */
+
+.modeswitch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  background: rgba(6, 8, 20, 0.6);
+}
+
+.modeswitch.is-hidden {
+  display: none;
+}
+
+.modeswitch__button {
+  padding: 0.3rem 0.9rem;
+  border-radius: var(--radius-pill);
+  font-size: var(--step--1);
+  color: var(--ghost);
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-mid) var(--ease-out);
+}
+
+.modeswitch__button:hover:not(:disabled):not(.is-active) {
+  color: var(--paper-dim);
+}
+
+.modeswitch__button.is-active {
+  color: var(--ink-900);
+  background: linear-gradient(140deg, var(--mint), var(--sky));
+  font-weight: 500;
+}
+
+.modeswitch__button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* --- Annotation ----------------------------------------------------------- */
+/*
+ * Timing is an editing job. The waveform stays — you tap far more accurately
+ * when you can see the vocal coming — and everything downstream of the score
+ * gets out of the way so the sheet can take the whole lower half.
+ */
+
+body.mode-annotation .score,
+body.mode-annotation .inspector,
+body.mode-annotation .grid {
+  display: none;
+}
+
+body.mode-annotation .stage__score {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+ * An unbroken chain of definite heights from the stage down to the line list.
+ *
+ * This is fiddlier than it looks: `height: 100%` on the list does nothing
+ * unless every ancestor is height-constrained, and a grid child defaults to
+ * min-height:auto, which lets it grow past its track instead of scrolling.
+ * Miss either and the list silently expands to fit all its rows, never
+ * overflows, and so never scrolls — which is exactly the failure this had.
+ */
+body.mode-annotation .stage__score {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+body.mode-annotation .stage__score-scroll {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden; /* the line list scrolls, not the column */
+  height: 100%;
+  min-height: 0;
+}
+
+body.mode-annotation .lyrics {
+  margin-bottom: 0;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+body.mode-annotation .lyrics__body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* The list is the whole point here, so give it the room — and let it scroll. */
+body.mode-annotation .lyrics__lines {
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/*
+ * Give the space to the list.
+ *
+ * The waveform earns its place here — seeing the vocal approach makes tapping
+ * noticeably more accurate — but it does not need a third of the screen to do
+ * it, and the paste box has done its job the moment the text is in. Both
+ * shrink so the line list, which is the thing you are actually reading while
+ * you tap, gets the room.
+ */
+body.mode-annotation .staff__frame {
+  height: clamp(88px, 13vh, 132px);
+}
+
+body.mode-annotation .lyrics__input {
+  max-height: 4.5rem;
+  min-height: 2.6rem;
+}
+
+/* The syllable grid belongs to Learning; hiding it also reclaims its height. */
+body.mode-annotation .transport {
+  margin-top: var(--space-2);
+}
+
+body.mode-annotation .lyrics__line {
+  padding-block: 0.35rem;
+}
+
+body.mode-annotation .lyrics__text {
+  font-size: var(--step-1);
+}
+
+/*
+ * The line you are about to tap. Larger, brighter, and always parked in the
+ * middle of the list — while tapping you are listening, not reading, and your
+ * eyes should never have to hunt for where the highlight went.
+ */
+body.mode-annotation .lyrics__line.is-next {
+  border-left-width: 3px;
+  background: linear-gradient(90deg, rgba(124, 245, 213, 0.16), transparent 70%);
+}
+
+body.mode-annotation .lyrics__line.is-next .lyrics__text {
+  color: var(--paper);
+  font-size: var(--step-2);
+}
+
+body.mode-annotation .lyrics__line.is-next .lyrics__time {
+  color: var(--mint);
+}
+
+/* Lines already timed recede, so the untimed remainder stands out. */
+body.mode-annotation .lyrics__line:not(.is-untimed):not(.is-next) .lyrics__text {
+  opacity: 0.55;
+}
+
+body.mode-annotation .lyrics__tap {
+  padding: 0.6rem 1.6rem;
+  font-size: var(--step-1);
+}
+
+/* --- Learning ------------------------------------------------------------- */
+/*
+ * Practising is a reading job. The sheet collapses to a single bar you can
+ * reopen to fix a line, and the score, grid and inspector take over.
+ */
+
+body.mode-learning .lyrics__body,
+body.mode-learning .lyrics__foot {
+  display: none;
+}
+
+body.mode-learning .lyrics {
+  padding: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+body.mode-learning .lyrics__title {
+  font-size: var(--step-0);
+}
+
+/* Reopening the sheet in Learning mode restores it in place. */
+body.mode-learning .lyrics:not(.is-collapsed) .lyrics__body,
+body.mode-learning .lyrics:not(.is-collapsed) .lyrics__foot {
+  display: grid;
+}
+
+body.mode-learning .lyrics:not(.is-collapsed) .lyrics__foot {
+  display: flex;
+}
+
+/*
+ * Controls that belong to the other job.
+ *
+ * Notation, the display layers and Export are all Learning concerns; showing
+ * them while you are timing a song just crowds the bar and makes the mode feel
+ * less like a mode. Hiding them also stops the header wrapping onto two rows.
+ */
+body.mode-annotation .controls__layers,
+body.mode-annotation .control--notation,
+body.mode-annotation .control--export,
+body.mode-annotation .control--toggle {
+  display: none;
+}
+
+.masthead {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+}
+
+.controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: var(--space-2);
+}
+
+/* A soft edge where the score scrolls under the grid above it. */
+body.mode-learning .stage__score-scroll {
+  mask-image: linear-gradient(180deg, transparent, #000 14px);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 14px);
+}
+
+/* --- Follow-along control ------------------------------------------------- */
+
+.transport__follow {
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--ghost);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.transport__follow.is-on {
+  color: var(--mint);
+  border-color: rgba(124, 245, 213, 0.4);
+  background: var(--mint-soft);
+}
+
+/*
+ * Paused. Deliberately conspicuous: the old bug was that follow switched
+ * itself off with no way to tell, so the one thing this state must do is
+ * announce itself.
+ */
+.transport__follow.is-paused {
+  color: var(--amber);
+  border-color: rgba(255, 184, 107, 0.45);
+  background: var(--amber-soft);
+}
+
+.transport__follow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
