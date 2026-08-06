@@ -56,6 +56,8 @@ export interface State {
   readonly selected: WordRef | null;
   readonly loop: { start: number; end: number } | null;
 
+  /** Fingerprint of the loaded audio — the key everything saved hangs off. */
+  readonly trackId: string | null;
   readonly mode: ViewMode;
   /**
    * Whether the score scrolls itself to keep up with the music.
@@ -121,6 +123,7 @@ export class Store {
     playing: false,
     selected: null,
     loop: null,
+    trackId: null,
     mode: 'annotation',
     followScore: true,
     layers: {

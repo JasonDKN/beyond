@@ -1,13 +1,12 @@
 import type { Player } from '@/audio/player';
 import type { State, Store } from '@/core/store';
+import { saveTrack } from '@/storage/library';
 import {
-  audioKeyFor,
   getSheet,
-  loadSheet,
   parseLyrics,
-  saveSheet,
   setSheet,
   type LyricLine,
+  type LyricSheet,
 } from '@/transcription/providers/lyrics';
 import { clear, el, formatClock } from './dom';
 
@@ -153,19 +152,16 @@ export class LyricsPanelView {
     const audio = state.audio;
     if (!audio) return;
 
-    const key = audioKeyFor(audio.name, audio.durationSec);
-    if (key !== this.#audioKey) {
+    // The track id is the fingerprint, set once the audio has been decoded and
+    // any saved sheet restored. Re-reading the sheet here keeps the panel in
+    // step with whatever the library handed back.
+    const key = state.trackId ?? '';
+    if (key && key !== this.#audioKey) {
       this.#audioKey = key;
-      const saved = loadSheet(key);
-      if (saved) {
-        setSheet(saved);
-        this.#textarea.value = saved.lines.map((line) => line.text).join('\n');
-        this.#cursor = saved.lines.findIndex((line) => line.startSec === null);
-        if (this.#cursor < 0) this.#cursor = saved.lines.length;
-      } else {
-        setSheet({ language: state.inputLanguage === 'auto' ? 'ko' : state.inputLanguage, lines: [], audioKey: key });
-        this.#cursor = 0;
-      }
+      const sheet = getSheet();
+      this.#textarea.value = sheet.lines.map((line) => line.text).join('\n');
+      const firstUntimed = sheet.lines.findIndex((line) => line.startSec === null);
+      this.#cursor = firstUntimed < 0 ? sheet.lines.length : firstUntimed;
       this.#renderLines();
     }
 
@@ -185,15 +181,35 @@ export class LyricsPanelView {
     this.#renderLines();
   }
 
+  /**
+   * Update the sheet and persist it against this track.
+   *
+   * Saving is keyed on the audio fingerprint, so two songs can never write
+   * over one another — and renaming a file no longer detaches its timings.
+   */
   #commit(lines: LyricLine[]): void {
-    const sheet = {
+    const state = this.#store.state;
+    const sheet: LyricSheet = {
       ...getSheet(),
       lines,
       audioKey: this.#audioKey,
-      language: this.#store.state.inputLanguage === 'auto' ? 'ko' : this.#store.state.inputLanguage,
+      language: state.inputLanguage === 'auto' ? 'ko' : state.inputLanguage,
     };
     setSheet(sheet);
-    saveSheet(sheet);
+
+    const trackId = state.trackId;
+    const audio = state.audio;
+    if (!trackId || !audio) return;
+
+    void saveTrack({
+      id: trackId,
+      title: audio.name.replace(/\.[^.]+$/, ''),
+      fileName: audio.name,
+      durationSec: audio.durationSec,
+      language: sheet.language,
+      mode: state.mode,
+      sheet,
+    });
   }
 
   #resetTimings(): void {

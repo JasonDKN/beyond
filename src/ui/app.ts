@@ -5,7 +5,17 @@ import { ControlsView } from './controls';
 import { clear, el } from './dom';
 import { DropzoneView } from './dropzone';
 import { InspectorView } from './inspector';
-import { audioKeyFor, getSheet } from '@/transcription/providers/lyrics';
+import type { AudioSource } from '@/core/types';
+import { fingerprintBuffer, legacyKey } from '@/storage/fingerprint';
+import {
+  getTrack,
+  getTrackAudio,
+  legacySheet,
+  saveTrack,
+  saveTrackAudio,
+} from '@/storage/library';
+import { getSheet, setSheet } from '@/transcription/providers/lyrics';
+import { LibraryView } from './library';
 import { LyricsPanelView } from './lyricsPanel';
 import { defaultModeFor, ModeSwitchView, savedModeFor, saveModeFor } from './modeSwitch';
 import { ScoreView } from './score';
@@ -53,9 +63,80 @@ export function mountApp(root: HTMLElement): void {
   });
 
   let currentFile: File | null = null;
-  const dropzone = new DropzoneView((file) => {
+
+  /**
+   * Identify the track, restore anything saved for it, and keep the audio.
+   *
+   * Runs between decoding and transcription, because the fingerprint needs the
+   * decoded samples and the lyric sheet has to be in place before the provider
+   * reads it.
+   */
+  const adoptTrack = async (audio: AudioSource): Promise<void> => {
+    const id = fingerprintBuffer(audio.buffer);
+
+    const saved = await getTrack(id);
+    // Work saved before the library existed was keyed by file name. Carry it
+    // over the first time we see the song, now that we know its fingerprint.
+    const sheet =
+      saved?.sheet ?? legacySheet(legacyKey(audio.name, audio.durationSec)) ?? null;
+
+    if (sheet) {
+      setSheet({ ...sheet, audioKey: id });
+    } else {
+      setSheet({
+        language: store.state.inputLanguage === 'auto' ? 'ko' : store.state.inputLanguage,
+        lines: [],
+        audioKey: id,
+      });
+    }
+
+    // Publish the id only now. The panel reloads its text when `trackId`
+    // changes, so announcing the new track before its sheet is in place makes
+    // it read the previous (or empty) one and never look again.
+    store.patch({ trackId: id, ...(saved ? { mode: saved.mode } : {}) });
+
+    // Record the track even when empty, so it appears in the library the
+    // moment you start work rather than only once you press Build.
+    await saveTrack({
+      id,
+      title: audio.name.replace(/\.[^.]+$/, ''),
+      fileName: audio.name,
+      durationSec: audio.durationSec,
+      language: store.state.inputLanguage === 'auto' ? 'ko' : store.state.inputLanguage,
+      mode: store.state.mode,
+      sheet: getSheet(),
+    });
+
+    // Keep the recording so the track reopens without a file picker. Timings
+    // are already safe at this point, so a full quota costs convenience only.
+    if (currentFile && !saved?.hasAudio) {
+      await saveTrackAudio(id, currentFile);
+    }
+    void library.refresh();
+  };
+
+  const openFile = (file: File): void => {
     currentFile = file;
-    void runPipeline(store, file);
+    void runPipeline(store, file, { onAudioDecoded: adoptTrack });
+  };
+
+  const dropzone = new DropzoneView(openFile);
+
+  const library = new LibraryView({
+    onOpen: (track) => {
+      void (async () => {
+        const blob = await getTrackAudio(track.id);
+        if (!blob) {
+          // No stored recording — ask for the file, and the fingerprint will
+          // reunite it with its timings.
+          store.patch({
+            notice: `${track.title}: the audio isn't stored. Choose the file and your timings will reattach.`,
+          });
+          return;
+        }
+        openFile(new File([blob], track.fileName, { type: blob.type || 'audio/mpeg' }));
+      })();
+    },
   });
 
   /**
@@ -67,7 +148,7 @@ export function mountApp(root: HTMLElement): void {
    */
   const buildAndStudy = async (): Promise<void> => {
     if (!currentFile) return;
-    await runPipeline(store, currentFile);
+    await runPipeline(store, currentFile, { onAudioDecoded: adoptTrack });
     if (store.state.status !== 'ready') return;
     const key = currentAudioKey();
     if (key && savedModeFor(key)) return;
@@ -103,7 +184,13 @@ export function mountApp(root: HTMLElement): void {
   );
 
   clear(root);
-  root.append(masthead(controls, modeSwitch), dropzone.element, stage, status.element);
+  root.append(
+    masthead(controls, modeSwitch),
+    el('div', { class: 'opening' }, dropzone.element, library.element),
+    stage,
+    status.element,
+  );
+  void library.refresh();
 
   // --- state → views -------------------------------------------------------
   const views = [
@@ -117,6 +204,7 @@ export function mountApp(root: HTMLElement): void {
     grid,
     lyricsPanel,
     modeSwitch,
+    library,
   ];
   store.events.on('change', (state) => {
     for (const view of views) view.update(state);
@@ -133,9 +221,9 @@ export function mountApp(root: HTMLElement): void {
   // song always wins.
   let lastAudioKey = '';
 
+  /** The fingerprint, so a remembered mode follows the song, not the filename. */
   function currentAudioKey(): string {
-    const audio = store.state.audio;
-    return audio ? audioKeyFor(audio.name, audio.durationSec) : '';
+    return store.state.trackId ?? '';
   }
 
   function pickMode(): void {

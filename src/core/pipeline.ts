@@ -4,7 +4,7 @@ import { phonemize } from '@/phonetics/phonemize';
 import { getProvider } from '@/transcription';
 import { translateScore } from '@/translation/provider';
 import type { Store } from './store';
-import type { Progress } from './types';
+import type { AudioSource, Progress } from './types';
 
 /** Envelope resolution. ~4000 buckets is more than any display needs, and it
  * lets us zoom in without recomputing. */
@@ -17,7 +17,23 @@ const PEAK_BUCKETS = 4000;
  * UI can narrate a slow local Whisper run without the pipeline knowing the UI
  * exists.
  */
-export async function runPipeline(store: Store, file: File, signal?: AbortSignal): Promise<void> {
+export interface PipelineHooks {
+  /**
+   * Runs after the audio is decoded but before anything is transcribed.
+   *
+   * This is where saved work for the track is restored: the lyric sheet has to
+   * be in place before the provider reads it, and the track cannot be
+   * identified until its audio has been decoded.
+   */
+  onAudioDecoded?: (audio: AudioSource) => Promise<void>;
+}
+
+export async function runPipeline(
+  store: Store,
+  file: File,
+  hooks: PipelineHooks = {},
+  signal?: AbortSignal,
+): Promise<void> {
   const report = (progress: Progress): void => store.patch({ progress });
 
   try {
@@ -33,9 +49,11 @@ export async function runPipeline(store: Store, file: File, signal?: AbortSignal
       currentTime: 0,
     });
 
-    // 1 — Decode
+    // 1 — Decode, then let the caller restore anything saved for this track
+    //     before the lyric provider goes looking for it.
     const audio = await decodeFile(file, report);
     store.patch({ audio });
+    await hooks.onAudioDecoded?.(audio);
 
     // 2 — Envelope + onsets, so the staff can be drawn before the model finishes
     report({ stage: 'analyze', ratio: null, message: 'Reading the waveform…' });

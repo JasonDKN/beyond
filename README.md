@@ -85,6 +85,27 @@ The grammar breakdown is the part that compounds. A line translation teaches
 you that line; recognising `-었-` as past tense teaches you every past tense
 you will ever hear.
 
+### Your library
+
+Every track keeps its own lyrics, timings, translations and view mode, and
+they cannot overwrite one another. Saved tracks appear on the opening screen
+with how far through the timing you are and when you last touched them — one
+click resumes exactly where you left off.
+
+Tracks are identified by a **fingerprint of the audio**, not the file name: a
+coarse loudness profile, quantised hard so it survives re-encoding. Rename the
+file, re-rip it at a different bitrate, and your timings still find it. (The
+displayed title does follow the current filename, so a renamed file shows its
+new name against the same saved work.)
+
+The audio itself is kept in IndexedDB so reopening needs no file picker.
+Roughly 5–10 MB per song, shown per track and as a running total; the size
+button drops just the recording and keeps the timings, and `✕` deletes the
+track entirely and asks twice before it does.
+
+Everything is local. Nothing is uploaded, and no lyrics or translations are
+ever fetched — you supply those.
+
 ### The four layers
 
 Each word is stacked, and each layer can be switched off as you outgrow it:
