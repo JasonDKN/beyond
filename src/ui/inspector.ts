@@ -1,5 +1,6 @@
 import type { State } from '@/core/store';
 import type { PhoneticWord, Syllable } from '@/core/types';
+import { Glossary } from '@/korean/morphology';
 import { splitIpaGlyphs } from '@/phonetics/ipa';
 import { vowelHue, vowelPosition } from '@/phonetics/vowelspace';
 import { clear, el } from './dom';
@@ -15,6 +16,7 @@ import { describeSource } from './score';
 export class InspectorView {
   readonly element: HTMLElement;
   #lastKey = '';
+  readonly #glossary = new Glossary();
 
   constructor() {
     this.element = el('aside', { class: 'inspector', 'aria-live': 'polite' });
@@ -72,6 +74,8 @@ export class InspectorView {
         badge(`${(word.endSec - word.startSec).toFixed(2)}s`, 'neutral'),
       ),
 
+      word.morphemes?.length ? section('Grammar', this.#morphemes(word)) : null,
+      this.#glossarySection(word),
       section('Syllables', this.#syllables(word)),
       section('Segments', this.#segments(word)),
       word.variants && word.variants.length > 0
@@ -80,6 +84,75 @@ export class InspectorView {
     ];
 
     this.element.append(...parts.filter((part): part is HTMLElement => part !== null));
+  }
+
+  /**
+   * The word taken apart into stem plus grammar.
+   *
+   * This is where the transferable learning is. Knowing what one line means
+   * teaches you that line; recognising -었- as past tense teaches you every
+   * past tense you will ever hear.
+   */
+  #morphemes(word: PhoneticWord): HTMLElement {
+    const list = el('div', { class: 'morphemes' });
+    for (const morpheme of word.morphemes ?? []) {
+      list.appendChild(
+        el(
+          'div',
+          {
+            class: `morpheme morpheme--${morpheme.kind}`,
+            ...(morpheme.detail ? { title: morpheme.detail } : {}),
+          },
+          el('span', { class: 'morpheme__text' }, morpheme.text),
+          el(
+            'span',
+            { class: 'morpheme__gloss' },
+            morpheme.gloss || (morpheme.kind === 'stem' ? this.#stemGloss(morpheme.text) : ''),
+          ),
+        ),
+      );
+    }
+    return list;
+  }
+
+  #stemGloss(stem: string): string {
+    return this.#glossary.get(stem) ?? '—';
+  }
+
+  /**
+   * Your own glossary.
+   *
+   * The analyser names the grammar but leaves open-class stems alone, because
+   * glossing those needs a dictionary too large to ship in a browser tab. So
+   * you fill them in — which is the better way round anyway: a word you looked
+   * up because it appeared in a song you like is a word you keep.
+   */
+  #glossarySection(word: PhoneticWord): HTMLElement {
+    const stem = word.morphemes?.[0]?.text ?? word.normalized;
+    const input = el('input', {
+      class: 'glossary__input',
+      type: 'text',
+      value: this.#glossary.get(stem) ?? '',
+      placeholder: `what does ${stem} mean?`,
+      'aria-label': `Your meaning for ${stem}`,
+      onchange: (event: Event) => {
+        this.#glossary.set(stem, (event.target as HTMLInputElement).value);
+        const gloss = this.element.querySelector('.morpheme--stem .morpheme__gloss');
+        if (gloss) gloss.textContent = this.#glossary.get(stem) ?? '—';
+      },
+    });
+
+    return el(
+      'section',
+      { class: 'inspector__section' },
+      el('h3', { class: 'inspector__title' }, 'Your note'),
+      input,
+      el(
+        'p',
+        { class: 'glossary__hint' },
+        `${this.#glossary.size} word${this.#glossary.size === 1 ? '' : 's'} saved · exportable as TSV for Anki`,
+      ),
+    );
   }
 
   #syllables(word: PhoneticWord): HTMLElement {

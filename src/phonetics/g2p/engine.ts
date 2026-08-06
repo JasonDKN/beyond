@@ -1,4 +1,11 @@
-import type { LanguageTag, Phone, PronunciationNote, PronunciationSource, Syllable } from '@/core/types';
+import type {
+  LanguageTag,
+  Morpheme,
+  Phone,
+  PronunciationNote,
+  PronunciationSource,
+  Syllable,
+} from '@/core/types';
 
 export interface Pronunciation {
   readonly phones: readonly Phone[];
@@ -51,6 +58,14 @@ export interface G2PEngine {
   load(): Promise<void>;
   /** Convert a single normalized word to phones. */
   pronounce(word: string): Pronunciation;
+  /**
+   * Break a word into its meaningful parts, where the language works that way.
+   *
+   * Optional, because it is only worth doing for languages that stack grammar
+   * onto a stem — Korean, Japanese, Turkish, Finnish. English mostly does not,
+   * so the English engine leaves this undefined and nothing downstream cares.
+   */
+  analyze?(word: string): readonly Morpheme[];
 }
 
 /** `en-US` → `en`. Comparison is always done on the primary subtag. */

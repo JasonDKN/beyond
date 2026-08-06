@@ -25,6 +25,14 @@ export interface LyricLine {
   readonly text: string;
   /** Seconds. `null` until the line has been tapped. */
   readonly startSec: number | null;
+  /**
+   * What the line means, in your own words.
+   *
+   * Supplied by you, like the lyrics themselves — Beyond ships no translations
+   * and fetches none. Typing your own is also the better way to learn it: a
+   * translation you had to think about sticks, and one you skimmed does not.
+   */
+  readonly translation?: string;
 }
 
 export interface LyricSheet {
@@ -40,9 +48,13 @@ export function emptySheet(language: LanguageTag = 'ko'): LyricSheet {
 
 /** Split pasted text into lines, dropping blank ones and section headers. */
 export function parseLyrics(raw: string, existing?: LyricSheet): LyricLine[] {
+  // Carry timings and translations across an edit by matching on line text, so
+  // fixing a typo in one line costs you that line and nothing else.
   const previous = new Map<string, number>();
+  const previousTranslations = new Map<string, string>();
   for (const line of existing?.lines ?? []) {
     if (line.startSec !== null) previous.set(line.text, line.startSec);
+    if (line.translation) previousTranslations.set(line.text, line.translation);
   }
 
   return raw
@@ -52,7 +64,12 @@ export function parseLyrics(raw: string, existing?: LyricSheet): LyricLine[] {
     .filter((line) => line.length > 0 && !/^[[(].*[\])]$/.test(line))
     .map((text) => {
       const carried = previous.get(text);
-      return { text, startSec: carried ?? null };
+      const translation = previousTranslations.get(text);
+      return {
+        text,
+        startSec: carried ?? null,
+        ...(translation ? { translation } : {}),
+      };
     });
 }
 
@@ -132,8 +149,9 @@ class LyricSheetProvider implements TranscriptionProvider {
     // rather than dropped — the panel keeps showing them as needing a tap.
     const timed = currentSheet.lines
       .map((line, index) => ({ ...line, index }))
-      .filter((line): line is { text: string; startSec: number; index: number } =>
-        line.startSec !== null,
+      .filter(
+        (line): line is { text: string; startSec: number; translation?: string; index: number } =>
+          line.startSec !== null,
       )
       .sort((a, b) => a.startSec - b.startSec);
 
@@ -152,6 +170,7 @@ class LyricSheetProvider implements TranscriptionProvider {
         text: line.text,
         startSec: line.startSec,
         endSec,
+        ...(line.translation ? { translation: line.translation } : {}),
         // Within a line, words are spaced by character count. Korean is
         // syllable-timed, so this is a better approximation there than it is
         // for a stress-timed language like English.

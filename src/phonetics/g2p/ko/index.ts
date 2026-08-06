@@ -1,4 +1,5 @@
-import type { Phone, Syllable } from '@/core/types';
+import type { Morpheme, Phone, Syllable } from '@/core/types';
+import { segment } from '@/korean/morphology';
 import type { G2PEngine, Pronunciation } from '../engine';
 import { compose, decompose, hasHangul, type Jamo } from './jamo';
 import { applyPhonology, DEFAULT_PHONOLOGY, type PhonologyOptions } from './phonology';
@@ -46,6 +47,18 @@ class KoreanG2P implements G2PEngine {
 
   async load(): Promise<void> {
     /* Rules are the engine — nothing to fetch. Works offline, on a plane. */
+  }
+
+  /**
+   * Break a word into stem plus grammar.
+   *
+   * Korean stacks suffixes onto a stem, and each one carries a piece of
+   * meaning. Naming them is what turns a lyric you have memorised into
+   * grammar you can reuse on the next song.
+   */
+  analyze(word: string): readonly Morpheme[] {
+    if (!hasHangul(word)) return [];
+    return segment(word);
   }
 
   pronounce(word: string): Pronunciation {

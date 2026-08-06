@@ -16,6 +16,10 @@ export class TransportView {
   #loopB: HTMLButtonElement;
   #loopClear: HTMLButtonElement;
   #pendingA: number | null = null;
+  #volume: HTMLInputElement;
+  #volumeIcon: HTMLButtonElement;
+  /** Level to restore when unmuting. */
+  #lastAudibleVolume = 1;
 
   constructor(player: Player, onZoom: (zoom: number) => void) {
     this.#player = player;
@@ -85,6 +89,41 @@ export class TransportView {
       ),
     ) as HTMLSelectElement;
 
+    // Volume. Stored across sessions, because the level that suits a quiet
+    // vocal on headphones is not the one that suits laptop speakers, and
+    // resetting it on every reload gets old fast.
+    const savedVolume = readSavedVolume();
+    this.#player.volume = savedVolume;
+
+    this.#volume = el('input', {
+      class: 'transport__volume',
+      type: 'range',
+      min: '0',
+      max: '1',
+      step: '0.01',
+      value: String(savedVolume),
+      'aria-label': 'Volume',
+      oninput: () => {
+        const level = Number(this.#volume.value);
+        this.#player.volume = level;
+        this.#volumeIcon.classList.toggle('is-muted', level === 0);
+        saveVolume(level);
+      },
+    }) as HTMLInputElement;
+
+    this.#volumeIcon = el(
+      'button',
+      {
+        class: 'transport__mute',
+        type: 'button',
+        title: 'Mute / unmute',
+        'aria-label': 'Mute or unmute',
+        onclick: () => this.#toggleMute(),
+      },
+      '🔊',
+    ) as HTMLButtonElement;
+    this.#volumeIcon.classList.toggle('is-muted', savedVolume === 0);
+
     this.#zoom = el('input', {
       class: 'transport__zoom',
       type: 'range',
@@ -117,12 +156,30 @@ export class TransportView {
       el(
         'div',
         { class: 'transport__group transport__group--right' },
+        el('span', { class: 'transport__volume-group' }, this.#volumeIcon, this.#volume),
         el('label', { class: 'transport__label' }, 'Speed', this.#rate),
         el('label', { class: 'transport__label' }, 'Zoom', this.#zoom),
       ),
     );
 
     this.#bindLoopKeys();
+  }
+
+  #toggleMute(): void {
+    const current = this.#player.volume;
+    if (current > 0) {
+      this.#lastAudibleVolume = current;
+      this.#setVolume(0);
+    } else {
+      this.#setVolume(this.#lastAudibleVolume || 1);
+    }
+  }
+
+  #setVolume(level: number): void {
+    this.#player.volume = level;
+    this.#volume.value = String(level);
+    this.#volumeIcon.classList.toggle('is-muted', level === 0);
+    saveVolume(level);
   }
 
   /**
@@ -167,6 +224,27 @@ export class TransportView {
     this.#loopB.classList.toggle('is-set', looping);
     this.#loopClear.disabled = !looping && this.#pendingA === null;
     this.element.classList.toggle('is-looping', looping);
+  }
+}
+
+const VOLUME_KEY = 'beyond.volume';
+
+function readSavedVolume(): number {
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY);
+    if (raw === null) return 1;
+    const value = Number(raw);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function saveVolume(level: number): void {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(level));
+  } catch {
+    // Private browsing or quota — the volume still works, it just won't persist.
   }
 }
 

@@ -221,11 +221,34 @@ export class LyricsPanelView {
         line.startSec === null ? '––––' : formatClock(line.startSec),
       );
 
+      // Your own translation of the line. Beyond ships none and fetches none;
+      // writing it yourself is also how it sticks.
+      const translation = el('input', {
+        class: 'lyrics__translation',
+        type: 'text',
+        value: line.translation ?? '',
+        placeholder: 'what it means…',
+        'aria-label': `Translation for: ${line.text}`,
+        onchange: (event: Event) => {
+          const value = (event.target as HTMLInputElement).value.trim();
+          this.#commit(
+            getSheet().lines.map((entry, i) => {
+              if (i !== index) return entry;
+              // Clearing the box removes the key entirely rather than storing
+              // an empty string, so `line.translation ? …` stays a clean test.
+              const { translation: _dropped, ...rest } = entry;
+              return value ? { ...rest, translation: value } : rest;
+            }),
+          );
+        },
+      }) as HTMLInputElement;
+
       const row = el(
         'li',
         { class: `lyrics__line${line.startSec === null ? ' is-untimed' : ''}` },
         time,
         el('span', { class: 'lyrics__text' }, line.text),
+        translation,
         el(
           'button',
           {

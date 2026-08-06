@@ -104,6 +104,8 @@ function buildLine(segment: TranscriptSegment, words: PhoneticWord[]): PhoneticL
     startSec: segment.startSec,
     endSec: segment.endSec,
     words,
+    // A translation supplied with the source text rides along untouched.
+    ...(segment.translation ? { translation: segment.translation } : {}),
   };
 }
 
@@ -157,8 +159,14 @@ function phonemizeWord(
     endSec: word.endSec,
   };
 
+  // Morphology, where the engine offers it. Done here rather than inside
+  // pronounce() because it answers a different question — what the word means
+  // rather than how it sounds — and a language can want one without the other.
+  const morphemes = engine.analyze?.(normalized) ?? [];
+
   return {
     ...base,
+    ...(morphemes.length > 1 ? { morphemes } : {}),
     ...(pronunciation.variants?.length ? { variants: pronunciation.variants } : {}),
     ...(pronunciation.respelling ? { respelling: pronunciation.respelling } : {}),
     ...(pronunciation.pronouncedForm ? { pronouncedForm: pronunciation.pronouncedForm } : {}),

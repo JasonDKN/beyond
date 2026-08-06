@@ -60,6 +60,8 @@ export interface TranscriptSegment {
   readonly startSec: number;
   readonly endSec: number;
   readonly words: readonly TranscriptWord[];
+  /** A translation of this line, when the source supplied one. */
+  readonly translation?: string;
 }
 
 export interface Transcript {

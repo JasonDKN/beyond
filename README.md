@@ -66,7 +66,24 @@ Beyond neither fetches nor ships anyone's lyrics. You supply the words.
 5. **Practise.** `[` and `]` set an A–B loop around a phrase; `\` clears it.
    Drop the speed to 0.5× — the pitch stays put, so it's still in key.
 
-Timings are saved per file, so closing the tab doesn't lose your work.
+Timings are saved per file, so closing the tab doesn't lose your work. The
+volume slider sits in the transport next to Speed, and remembers its setting.
+
+### Meaning
+
+Two places, both filled in by you — Beyond ships no translations and fetches
+none:
+
+- **Per line**, in the lyric sheet: a box beside each line for what it means.
+  It appears under that line in the score and travels into the SRT and text
+  exports.
+- **Per word**, in the inspector: click any word to see its grammar broken out
+  — stem, then each particle and ending named — plus a note field for the stem
+  itself. Those notes are saved and export as TSV for Anki.
+
+The grammar breakdown is the part that compounds. A line translation teaches
+you that line; recognising `-었-` as past tense teaches you every past tense
+you will ever hear.
 
 ### The four layers
 

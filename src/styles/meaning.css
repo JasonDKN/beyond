@@ -1,0 +1,150 @@
+/* Volume, morpheme breakdown, glossary, per-line translation. */
+
+/* --- Volume -------------------------------------------------------------- */
+
+.transport__volume-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.transport__mute {
+  font-size: 0.85rem;
+  line-height: 1;
+  opacity: 0.75;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.transport__mute:hover {
+  opacity: 1;
+}
+
+.transport__mute.is-muted {
+  opacity: 0.35;
+}
+
+.transport__volume {
+  appearance: none;
+  width: 5.5rem;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, rgba(140, 190, 255, 0.55), rgba(124, 245, 213, 0.55));
+  cursor: pointer;
+}
+
+.transport__volume::-webkit-slider-thumb {
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 0 10px rgba(140, 190, 255, 0.7);
+}
+
+.transport__volume::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+/* --- Morpheme breakdown -------------------------------------------------- */
+
+.morphemes {
+  display: grid;
+  gap: 2px;
+}
+
+/*
+ * One row per morpheme, in the order Korean stacks them: stem first, then the
+ * grammar outward. Reading top to bottom is reading the word being built.
+ */
+.morpheme {
+  display: grid;
+  grid-template-columns: minmax(3.5rem, auto) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: 0.3rem var(--space-2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+  background: rgba(20, 26, 52, 0.5);
+}
+
+.morpheme__text {
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  color: var(--paper);
+}
+
+.morpheme__gloss {
+  font-size: var(--step--1);
+  color: var(--paper-dim);
+}
+
+/* The stem is the word; everything else is what is being done to it. */
+.morpheme--stem {
+  border-left-color: var(--mint);
+}
+
+.morpheme--particle {
+  border-left-color: var(--violet);
+}
+
+.morpheme--ending,
+.morpheme--suffix {
+  border-left-color: var(--sky);
+}
+
+/* --- Glossary ------------------------------------------------------------ */
+
+.glossary__input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-soft);
+  background: rgba(6, 8, 20, 0.65);
+  color: var(--paper);
+  font-size: var(--step-0);
+}
+
+.glossary__input::placeholder {
+  color: var(--ghost);
+}
+
+.glossary__input:focus {
+  border-color: rgba(124, 245, 213, 0.5);
+}
+
+.glossary__hint {
+  font-size: 0.65rem;
+  color: var(--ghost);
+}
+
+/* --- Per-line translation in the lyric sheet ----------------------------- */
+
+.lyrics__line {
+  grid-template-columns: 3.4rem minmax(0, 1.2fr) minmax(0, 1fr) 1.6rem;
+}
+
+.lyrics__translation {
+  width: 100%;
+  padding: 0.15rem 0.4rem;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--paper-dim);
+  font-size: var(--step--1);
+  font-style: italic;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.lyrics__translation::placeholder {
+  color: rgba(108, 120, 155, 0.55);
+}
+
+.lyrics__translation:hover,
+.lyrics__translation:focus {
+  border-bottom-color: rgba(140, 168, 232, 0.35);
+  outline: none;
+}
