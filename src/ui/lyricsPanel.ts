@@ -201,6 +201,9 @@ export class LyricsPanelView {
     const audio = state.audio;
     if (!trackId || !audio) return;
 
+    // Report the write, so the toolbar can say "Saved" rather than leaving you
+    // to wonder. Every tap goes through here, so the indicator tracks reality.
+    this.#store.patch({ saveState: 'saving' });
     void saveTrack({
       id: trackId,
       title: audio.name.replace(/\.[^.]+$/, ''),
@@ -209,7 +212,9 @@ export class LyricsPanelView {
       language: sheet.language,
       mode: state.mode,
       sheet,
-    });
+    })
+      .then(() => this.#store.patch({ saveState: 'saved', savedAt: Date.now() }))
+      .catch(() => this.#store.patch({ saveState: 'failed' }));
   }
 
   #resetTimings(): void {

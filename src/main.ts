@@ -9,6 +9,7 @@ import '@/styles/learn.css';
 import '@/styles/meaning.css';
 import '@/styles/modes.css';
 import '@/styles/library.css';
+import '@/styles/trackbar.css';
 import { mountApp } from '@/ui/app';
 
 const root = document.querySelector<HTMLElement>('#app');

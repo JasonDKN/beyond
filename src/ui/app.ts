@@ -15,7 +15,9 @@ import {
   saveTrackAudio,
 } from '@/storage/library';
 import { getSheet, setSheet } from '@/transcription/providers/lyrics';
+import { ACCEPT_ATTRIBUTE } from '@/audio/decoder';
 import { LibraryView } from './library';
+import { TrackBarView } from './trackBar';
 import { LyricsPanelView } from './lyricsPanel';
 import { defaultModeFor, ModeSwitchView, savedModeFor, saveModeFor } from './modeSwitch';
 import { ScoreView } from './score';
@@ -117,26 +119,99 @@ export function mountApp(root: HTMLElement): void {
 
   const openFile = (file: File): void => {
     currentFile = file;
+    // Opening anything dismisses the drawer, whichever route got us here —
+    // the dropzone, the toolbar, or a drop onto the window. Leaving that to
+    // each call site meant one path forgot and the drawer sat over the
+    // workspace swallowing clicks.
+    store.patch({ libraryOpen: false });
     void runPipeline(store, file, { onAudioDecoded: adoptTrack });
   };
 
   const dropzone = new DropzoneView(openFile);
 
-  const library = new LibraryView({
-    onOpen: (track) => {
+  /**
+   * Write the current track's work before leaving it.
+   *
+   * Every tap already saves as it happens, so this is usually a no-op — but
+   * "usually" is not the standard for the moment you walk away from an hour of
+   * timing. Switching waits for a confirmed write.
+   */
+  const flushCurrentTrack = async (): Promise<void> => {
+    const { trackId, audio, mode, inputLanguage } = store.state;
+    if (!trackId || !audio) return;
+    store.patch({ saveState: 'saving' });
+    await saveTrack({
+      id: trackId,
+      title: audio.name.replace(/\.[^.]+$/, ''),
+      fileName: audio.name,
+      durationSec: audio.durationSec,
+      language: inputLanguage === 'auto' ? 'ko' : inputLanguage,
+      mode,
+      sheet: getSheet(),
+    });
+    store.patch({ saveState: 'saved', savedAt: Date.now() });
+  };
+
+  const openSavedTrack = (track: { id: string; title: string; fileName: string }): void => {
+    void (async () => {
+      await flushCurrentTrack();
+      store.patch({ libraryOpen: false });
+
+      const blob = await getTrackAudio(track.id);
+      if (!blob) {
+        // No stored recording — ask for the file, and the fingerprint will
+        // reunite it with its timings.
+        store.patch({
+          notice: `${track.title}: the audio isn't stored. Choose the file and your timings will reattach.`,
+        });
+        pickFile();
+        return;
+      }
+      openFile(new File([blob], track.fileName, { type: blob.type || 'audio/mpeg' }));
+    })();
+  };
+
+  /** A file picker that works once a song is already open. */
+  const fileInput = el('input', {
+    type: 'file',
+    // Distinct from the dropzone's own input, so the two are never confused.
+    class: 'visually-hidden',
+    'data-role': 'open-track',
+    accept: ACCEPT_ATTRIBUTE,
+    onchange: (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      // Reset, so choosing the same file twice still fires a change.
+      input.value = '';
+      if (!file) return;
       void (async () => {
-        const blob = await getTrackAudio(track.id);
-        if (!blob) {
-          // No stored recording — ask for the file, and the fingerprint will
-          // reunite it with its timings.
-          store.patch({
-            notice: `${track.title}: the audio isn't stored. Choose the file and your timings will reattach.`,
-          });
-          return;
-        }
-        openFile(new File([blob], track.fileName, { type: blob.type || 'audio/mpeg' }));
+        await flushCurrentTrack();
+        store.patch({ libraryOpen: false });
+        openFile(file);
       })();
     },
+  }) as HTMLInputElement;
+
+  const pickFile = (): void => fileInput.click();
+
+  const library = new LibraryView({ onOpen: openSavedTrack });
+
+  const drawer = new LibraryView(
+    {
+      onOpen: openSavedTrack,
+      onClose: () => store.patch({ libraryOpen: false }),
+      onOpenFile: pickFile,
+    },
+    'drawer',
+  );
+
+  const trackBar = new TrackBarView({
+    onToggleLibrary: () => {
+      const opening = !store.state.libraryOpen;
+      store.patch({ libraryOpen: opening });
+      if (opening) void drawer.refresh();
+    },
+    onOpenFile: pickFile,
   });
 
   /**
@@ -185,12 +260,20 @@ export function mountApp(root: HTMLElement): void {
 
   clear(root);
   root.append(
-    masthead(controls, modeSwitch),
+    masthead(controls, modeSwitch, trackBar),
     el('div', { class: 'opening' }, dropzone.element, library.element),
     stage,
+    drawer.element,
+    fileInput,
     status.element,
   );
   void library.refresh();
+  void drawer.refresh();
+
+  // Clicking the backdrop or pressing Escape closes the drawer.
+  drawer.element.addEventListener('pointerdown', (event) => {
+    if (event.target === drawer.element) store.patch({ libraryOpen: false });
+  });
 
   // --- state → views -------------------------------------------------------
   const views = [
@@ -205,6 +288,8 @@ export function mountApp(root: HTMLElement): void {
     lyricsPanel,
     modeSwitch,
     library,
+    drawer,
+    trackBar,
   ];
   store.events.on('change', (state) => {
     for (const view of views) view.update(state);
@@ -289,7 +374,10 @@ export function mountApp(root: HTMLElement): void {
         player.nudge(event.shiftKey ? 10 : 3);
         break;
       case 'Escape':
-        store.patch({ selected: null });
+        // Close the drawer first if it is open — Escape should dismiss the
+        // thing most recently in front of you.
+        if (store.state.libraryOpen) store.patch({ libraryOpen: false });
+        else store.patch({ selected: null });
         break;
       default:
         break;
@@ -299,7 +387,11 @@ export function mountApp(root: HTMLElement): void {
   store.patch({});
 }
 
-function masthead(controls: ControlsView, modeSwitch: ModeSwitchView): HTMLElement {
+function masthead(
+  controls: ControlsView,
+  modeSwitch: ModeSwitchView,
+  trackBar: TrackBarView,
+): HTMLElement {
   return el(
     'header',
     { class: 'masthead' },
@@ -314,6 +406,7 @@ function masthead(controls: ControlsView, modeSwitch: ModeSwitchView): HTMLEleme
       ),
     ),
     modeSwitch.element,
+    trackBar.element,
     controls.element,
   );
 }

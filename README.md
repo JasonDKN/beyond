@@ -85,6 +85,21 @@ The grammar breakdown is the part that compounds. A line translation teaches
 you that line; recognising `-었-` as past tense teaches you every past tense
 you will ever hear.
 
+### Switching songs
+
+The toolbar in the header names the song you have open and says whether its
+work is on disk — **Saving…**, then **Saved just now**. Saving has always been
+automatic on every tap, but automatic and invisible feels identical to not
+saving at all when you are about to leave an hour of timing, so it now says so.
+
+**Tracks** opens a drawer over the workspace listing everything you have
+worked on, with the current song marked *open now*. Pick another and it writes
+the current one first, waits for that write to confirm, then loads the new one.
+**New song** — in the toolbar or at the foot of the drawer — opens a file that
+is not in your library yet, saving the current track on the way out.
+
+No reloading, and nothing to remember to press.
+
 ### Your library
 
 Every track keeps its own lyrics, timings, translations and view mode, and

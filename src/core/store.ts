@@ -58,6 +58,17 @@ export interface State {
 
   /** Fingerprint of the loaded audio — the key everything saved hangs off. */
   readonly trackId: string | null;
+  /**
+   * Whether the current track's work is written to disk.
+   *
+   * Saving has always been automatic, but silent — and silent saving is
+   * indistinguishable from no saving when you are about to close a song you
+   * spent an hour timing. This exists so the interface can say so.
+   */
+  readonly saveState: 'idle' | 'saving' | 'saved' | 'failed';
+  readonly savedAt: number | null;
+  /** The track drawer, over the workspace. */
+  readonly libraryOpen: boolean;
   readonly mode: ViewMode;
   /**
    * Whether the score scrolls itself to keep up with the music.
@@ -124,6 +135,9 @@ export class Store {
     selected: null,
     loop: null,
     trackId: null,
+    saveState: 'idle',
+    savedAt: null,
+    libraryOpen: false,
     mode: 'annotation',
     followScore: true,
     layers: {
