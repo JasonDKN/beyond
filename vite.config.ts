@@ -46,6 +46,17 @@ export default defineConfig({
     },
   },
   server: {
+    /*
+     * Pinned, and refuse to start rather than drift.
+     *
+     * Browser storage is scoped per origin, and the port is part of the
+     * origin. Vite's default is to hop to the next free port when 5173 is
+     * busy — which silently moves the app to a different origin and makes
+     * every saved track vanish from the library. Failing to start is a far
+     * better outcome than appearing to have deleted someone's work.
+     */
+    port: 5173,
+    strictPort: true,
     // Required for the multithreaded WASM backend used by local Whisper.
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',

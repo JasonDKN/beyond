@@ -26,6 +26,8 @@ export interface LibraryCallbacks {
   onClose?: () => void;
   /** Only used by the drawer, to pick a file not yet in the library. */
   onOpenFile?: () => void;
+  /** Only used by the drawer, to open a saved project file from disk. */
+  onOpenProject?: () => void;
 }
 
 /**
@@ -123,6 +125,16 @@ export class LibraryView {
         ? el(
             'footer',
             { class: 'library__foot', 'data-variant': variant },
+            el(
+              'button',
+              {
+                class: 'library__newfile',
+                type: 'button',
+                title: 'Open a project file you saved to a folder',
+                onclick: () => this.#callbacks.onOpenProject?.(),
+              },
+              'Open project file…',
+            ),
             el(
               'button',
               {

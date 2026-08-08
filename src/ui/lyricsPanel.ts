@@ -152,14 +152,22 @@ export class LyricsPanelView {
     const audio = state.audio;
     if (!audio) return;
 
-    // The track id is the fingerprint, set once the audio has been decoded and
-    // any saved sheet restored. Re-reading the sheet here keeps the panel in
-    // step with whatever the library handed back.
     const key = state.trackId ?? '';
-    if (key && key !== this.#audioKey) {
+    const sheet = getSheet();
+    const sheetText = sheet.lines.map((line) => line.text).join('\n');
+
+    // Resync on a new track *or* whenever the sheet has been replaced beneath
+    // us — opening a project file for the song already loaded changes the
+    // sheet without changing the track, and keying only on the track id left
+    // the panel showing the old text while the score showed the new.
+    //
+    // Never while you are typing in the box, which would fight the edit.
+    const externallyChanged = sheetText !== this.#textarea.value;
+    const focused = document.activeElement === this.#textarea;
+
+    if (key && (key !== this.#audioKey || (externallyChanged && !focused))) {
       this.#audioKey = key;
-      const sheet = getSheet();
-      this.#textarea.value = sheet.lines.map((line) => line.text).join('\n');
+      this.#textarea.value = sheetText;
       const firstUntimed = sheet.lines.findIndex((line) => line.startSec === null);
       this.#cursor = firstUntimed < 0 ? sheet.lines.length : firstUntimed;
       this.#renderLines();

@@ -180,3 +180,10 @@
   color: var(--mint);
   text-transform: uppercase;
 }
+
+/* Project files: the track's work as a file on disk. */
+
+.trackbar__button--file.is-linked {
+  color: var(--mint);
+  border-color: rgba(124, 245, 213, 0.4);
+}

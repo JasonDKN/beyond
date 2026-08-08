@@ -13,7 +13,19 @@ import {
   legacySheet,
   saveTrack,
   saveTrackAudio,
+  type TrackRecord,
 } from '@/storage/library';
+import {
+  adoptProject,
+  canWriteFiles,
+  parseProject,
+  pickOpenHandle,
+  pickSaveHandle,
+  projectFileName,
+  serializeProject,
+  writeHandle,
+} from '@/storage/project';
+import { download } from '@/export';
 import { getSheet, setSheet } from '@/transcription/providers/lyrics';
 import { ACCEPT_ATTRIBUTE } from '@/audio/decoder';
 import { LibraryView } from './library';
@@ -222,9 +234,131 @@ export function mountApp(root: HTMLElement): void {
       onOpen: openSavedTrack,
       onClose: () => store.patch({ libraryOpen: false }),
       onOpenFile: pickFile,
+      // Deferred: `openProject` is declared below, and only ever invoked on a
+      // click, long after this object is built.
+      onOpenProject: () => openProject(),
     },
     'drawer',
   );
+
+  /**
+   * The project file this track writes to, if one has been chosen.
+   *
+   * Held per track: switching songs drops the link, because a project file
+   * belongs to one song and silently overwriting it with another would be a
+   * spectacular way to lose work.
+   */
+  let projectHandle: FileSystemFileHandle | null = null;
+  let projectTrackId: string | null = null;
+  let projectWriteTimer = 0;
+
+  const currentRecord = async (): Promise<TrackRecord | null> => {
+    const id = store.state.trackId;
+    return id ? getTrack(id) : null;
+  };
+
+  /** Write the current track to its linked file. Silent — no picker. */
+  const writeProjectFile = async (): Promise<void> => {
+    if (!projectHandle || projectTrackId !== store.state.trackId) return;
+    const record = await currentRecord();
+    if (!record) return;
+    try {
+      await writeHandle(projectHandle, serializeProject(record));
+    } catch {
+      // The file may have been moved or permission withdrawn. Drop the link
+      // rather than failing silently on every future save.
+      projectHandle = null;
+      projectTrackId = null;
+      trackBar.setLinkedFile(null);
+      store.patch({ notice: 'Lost the link to the project file — use Save to file again.' });
+    }
+  };
+
+  const saveToFile = (): void => {
+    void (async () => {
+      const record = await currentRecord();
+      if (!record) return;
+
+      if (!canWriteFiles()) {
+        // Firefox and Safari cannot write to a picked file, so fall back to a
+        // plain download. Same data, one more step.
+        download(projectFileName(record.title), serializeProject(record), 'application/json');
+        return;
+      }
+
+      const handle = await pickSaveHandle(projectFileName(record.title));
+      if (!handle) return;
+      projectHandle = handle;
+      projectTrackId = record.id;
+      trackBar.setLinkedFile(handle.name);
+      await writeProjectFile();
+      store.patch({ notice: `Saving to ${handle.name} from now on.` });
+    })();
+  };
+
+  /** Open a project file and load the song it describes. */
+  const openProjectFile = (file: File, handle: FileSystemFileHandle | null): void => {
+    void (async () => {
+      // Parse before touching anything, so a bad file changes nothing.
+      let parsed;
+      try {
+        parsed = parseProject(await file.text());
+      } catch (error) {
+        store.patch({
+          notice: error instanceof Error ? error.message : 'That project could not be opened.',
+        });
+        return;
+      }
+
+      // Save whatever is open *first*. The project may describe the very song
+      // already loaded — same audio, same fingerprint — and flushing after
+      // adopting would write the current sheet straight over the file we were
+      // asked to open.
+      await flushCurrentTrack();
+      const adopted = await adoptProject(parsed);
+      store.patch({ libraryOpen: false });
+      projectHandle = handle;
+      projectTrackId = adopted.id;
+      trackBar.setLinkedFile(handle?.name ?? null);
+
+      const blob = await getTrackAudio(adopted.id);
+      if (blob) {
+        openFile(new File([blob], adopted.fileName, { type: blob.type || 'audio/mpeg' }));
+        return;
+      }
+      // First time on this machine: the audio is not cached yet. Ask once —
+      // the fingerprint will reattach it to the work we just loaded.
+      store.patch({
+        notice: `Opened ${adopted.title}. Choose its audio file and your timings will reattach.`,
+      });
+      pickFile();
+    })();
+  };
+
+  const projectInput = el('input', {
+    type: 'file',
+    class: 'visually-hidden',
+    'data-role': 'open-project',
+    accept: '.json,application/json',
+    onchange: (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      input.value = '';
+      if (file) openProjectFile(file, null);
+    },
+  }) as HTMLInputElement;
+
+  const openProject = (): void => {
+    void (async () => {
+      if (!canWriteFiles()) {
+        projectInput.click();
+        return;
+      }
+      const handle = await pickOpenHandle();
+      if (!handle) return;
+      openProjectFile(await handle.getFile(), handle);
+    })();
+  };
 
   const trackBar = new TrackBarView({
     onToggleLibrary: () => {
@@ -233,6 +367,7 @@ export function mountApp(root: HTMLElement): void {
       if (opening) void drawer.refresh();
     },
     onOpenFile: pickFile,
+    onSaveToFile: saveToFile,
   });
 
   /**
@@ -287,8 +422,28 @@ export function mountApp(root: HTMLElement): void {
     stage,
     drawer.element,
     fileInput,
+    projectInput,
     status.element,
   );
+
+  // Mirror every committed save into the linked project file, debounced so a
+  // burst of taps writes once rather than forty times.
+  store.events.on('change', (state) => {
+    if (state.saveState !== 'saved' || !projectHandle) return;
+    clearTimeout(projectWriteTimer);
+    projectWriteTimer = window.setTimeout(() => void writeProjectFile(), 800);
+  });
+
+  // Changing songs drops the link. A project file belongs to one song, and
+  // quietly overwriting it with a different one would be a fine way to lose
+  // an evening's work.
+  store.events.on('change', (state) => {
+    if (projectTrackId && state.trackId && state.trackId !== projectTrackId) {
+      projectHandle = null;
+      projectTrackId = null;
+      trackBar.setLinkedFile(null);
+    }
+  });
   void library.refresh();
   void drawer.refresh();
 

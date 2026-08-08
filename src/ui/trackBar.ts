@@ -16,6 +16,8 @@ import { el } from './dom';
 export interface TrackBarCallbacks {
   onToggleLibrary(): void;
   onOpenFile(): void;
+  /** Save this track's work to a file on disk. */
+  onSaveToFile(): void;
 }
 
 export class TrackBarView {
@@ -24,7 +26,10 @@ export class TrackBarView {
   #title: HTMLElement;
   #save: HTMLElement;
   #tracksButton: HTMLButtonElement;
+  #saveFileButton: HTMLButtonElement;
   #lastLabel = '';
+  /** Name of the project file this track is linked to, if any. */
+  #linkedFile: string | null = null;
 
   constructor(callbacks: TrackBarCallbacks) {
     this.#title = el('span', { class: 'trackbar__title' });
@@ -39,6 +44,17 @@ export class TrackBarView {
         onclick: () => callbacks.onToggleLibrary(),
       },
       'Tracks',
+    ) as HTMLButtonElement;
+
+    this.#saveFileButton = el(
+      'button',
+      {
+        class: 'trackbar__button trackbar__button--file',
+        type: 'button',
+        title: 'Save this track to a file in a folder of your choosing',
+        onclick: () => callbacks.onSaveToFile(),
+      },
+      'Save to file',
     ) as HTMLButtonElement;
 
     this.element = el(
@@ -56,6 +72,7 @@ export class TrackBarView {
         },
         'New song',
       ),
+      this.#saveFileButton,
     );
   }
 
@@ -73,8 +90,22 @@ export class TrackBarView {
     }
 
     this.#save.className = `trackbar__save is-${state.saveState}`;
-    this.#save.textContent = describeSave(state);
+    this.#save.textContent = this.#linkedFile
+      ? `${describeSave(state)} · ${this.#linkedFile}`
+      : describeSave(state);
     this.#tracksButton.classList.toggle('is-open', state.libraryOpen);
+  }
+
+  /**
+   * Show which file this track writes to.
+   *
+   * Once linked, every later save goes to that file automatically, so the
+   * button changes from an action to a statement of where the work lives.
+   */
+  setLinkedFile(name: string | null): void {
+    this.#linkedFile = name;
+    this.#saveFileButton.textContent = name ? 'Save as…' : 'Save to file';
+    this.#saveFileButton.classList.toggle('is-linked', name !== null);
   }
 }
 
