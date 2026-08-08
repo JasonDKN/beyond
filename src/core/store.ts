@@ -20,7 +20,7 @@ export type Status = 'idle' | 'working' | 'ready' | 'error';
  * to serve both from one screen is what made the follow-along behaviour feel
  * arbitrary — it was following in a layout built for editing.
  */
-export type ViewMode = 'annotation' | 'learning';
+export type ViewMode = 'annotation' | 'learning' | 'practice';
 
 export interface WordRef {
   readonly lineIndex: number;

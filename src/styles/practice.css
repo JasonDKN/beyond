@@ -1,0 +1,252 @@
+/* Practice mode: record, score, compare. */
+
+.practice {
+  grid-row: 2;
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.practice.is-hidden {
+  display: none;
+}
+
+/* Practice replaces the score column but keeps the waveform and transport. */
+body.mode-practice .stage__score {
+  display: none;
+}
+
+body.mode-practice .grid {
+  display: none;
+}
+
+/*
+ * Notation, the display layers and Export belong to reading the score, not to
+ * recording yourself. Hiding them here keeps the header on one row and makes
+ * Practice feel like its own place rather than Learning with a mic bolted on.
+ */
+body.mode-practice .controls__layers,
+body.mode-practice .control--notation,
+body.mode-practice .control--export,
+body.mode-practice .control--toggle {
+  display: none;
+}
+
+.practice__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.practice__record {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.6rem 1.4rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 143, 177, 0.5);
+  background: linear-gradient(180deg, rgba(255, 143, 177, 0.18), rgba(255, 143, 177, 0.05));
+  color: var(--paper);
+  font-weight: 500;
+}
+
+.practice__record::before {
+  content: '';
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--rose);
+}
+
+.practice__record:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Recording. The pulse is the one place in this app where motion is a status
+   indicator rather than decoration, so it stays even under reduced-motion. */
+.practice__record.is-recording {
+  border-color: var(--rose);
+  background: rgba(255, 143, 177, 0.25);
+}
+
+.practice__record.is-recording::before {
+  animation: rec-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.practice__score {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.practice__score-value {
+  font-family: var(--font-display);
+  font-size: var(--step-3);
+  font-weight: 300;
+  line-height: 1;
+  color: var(--paper-dim);
+}
+
+.practice__score-value.is-strong {
+  color: var(--mint);
+}
+.practice__score-value.is-fair {
+  color: var(--sky);
+}
+.practice__score-value.is-weak {
+  color: var(--amber);
+}
+
+.practice__score-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ghost);
+}
+
+.practice__score-detail {
+  font-size: var(--step-0);
+  color: var(--paper-dim);
+}
+
+.practice__hint {
+  font-size: var(--step--1);
+  color: var(--ghost);
+  max-width: 60ch;
+}
+
+.practice__hint.is-error {
+  color: var(--rose);
+}
+
+/* --- Heatmap -------------------------------------------------------------- */
+
+/*
+ * One cell per syllable, coloured by how close you landed and labelled with
+ * the error in milliseconds. The single score says how you did; this says
+ * where — which is the part you can act on.
+ */
+.practice__heatmap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.practice__cell {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  min-width: 2.8rem;
+  padding: 0.35rem 0.3rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-soft);
+  border-bottom: 2px solid transparent;
+  background: rgba(20, 26, 52, 0.55);
+}
+
+.practice__cell.is-word-start {
+  border-left: 1px solid rgba(140, 168, 232, 0.3);
+}
+
+.practice__cell.is-tight {
+  border-bottom-color: var(--mint);
+  background: rgba(124, 245, 213, 0.14);
+}
+
+.practice__cell.is-close {
+  border-bottom-color: var(--sky);
+  background: rgba(140, 190, 255, 0.12);
+}
+
+.practice__cell.is-loose {
+  border-bottom-color: var(--amber);
+  background: rgba(255, 184, 107, 0.12);
+}
+
+.practice__cell.is-missed {
+  border-bottom-color: rgba(255, 143, 177, 0.6);
+  background: rgba(255, 143, 177, 0.08);
+  opacity: 0.75;
+}
+
+.practice__cell-glyph {
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  color: var(--paper);
+  line-height: 1.1;
+}
+
+.practice__cell-delta {
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ghost);
+}
+
+/* --- Takes ---------------------------------------------------------------- */
+
+.practice__takes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.practice__takes-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ghost);
+  margin-right: var(--space-2);
+}
+
+.practice__take {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  background: rgba(16, 20, 40, 0.6);
+}
+
+.practice__take:hover {
+  border-color: rgba(140, 168, 232, 0.4);
+}
+
+.practice__take.is-current {
+  border-color: rgba(124, 245, 213, 0.45);
+  background: rgba(124, 245, 213, 0.08);
+}
+
+.practice__take-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: var(--step-0);
+  color: var(--paper-dim);
+}
+
+.practice__take-score.is-strong {
+  color: var(--mint);
+}
+.practice__take-score.is-fair {
+  color: var(--sky);
+}
+.practice__take-score.is-weak {
+  color: var(--amber);
+}
+
+.practice__take-when {
+  font-size: 0.65rem;
+  color: var(--ghost);
+}

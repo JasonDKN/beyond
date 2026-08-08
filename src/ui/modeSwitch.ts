@@ -16,10 +16,12 @@ import { el } from './dom';
 const STORAGE_KEY = 'beyond.mode.';
 
 /** A mode you chose by hand for a particular song, which outranks the default. */
+const MODES: readonly ViewMode[] = ['annotation', 'learning', 'practice'];
+
 export function savedModeFor(audioKey: string): ViewMode | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY + audioKey);
-    return raw === 'annotation' || raw === 'learning' ? raw : null;
+    return MODES.includes(raw as ViewMode) ? (raw as ViewMode) : null;
   } catch {
     return null;
   }
@@ -81,7 +83,8 @@ export class ModeSwitchView {
       'div',
       { class: 'modeswitch', role: 'group', 'aria-label': 'View mode' },
       button('annotation', 'Annotation', 'Paste lyrics and tap the timing'),
-      button('learning', 'Learning', 'Follow the score and practise'),
+      button('learning', 'Learning', 'Follow the score and read along'),
+      button('practice', 'Practice', 'Record yourself and score your timing'),
     );
   }
 
@@ -91,8 +94,10 @@ export class ModeSwitchView {
       node.classList.toggle('is-active', active);
       node.setAttribute('aria-pressed', String(active));
     }
-    // Learning has nothing to show until a score exists.
+    // Neither Learning nor Practice has anything to show until a score exists
+    // — Practice grades against the grid the score is built from.
     this.#buttons.get('learning')?.toggleAttribute('disabled', state.score === null);
+    this.#buttons.get('practice')?.toggleAttribute('disabled', state.score === null);
     this.element.classList.toggle('is-hidden', state.audio === null);
   }
 

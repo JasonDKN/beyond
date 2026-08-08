@@ -17,6 +17,7 @@ import {
 import { getSheet, setSheet } from '@/transcription/providers/lyrics';
 import { ACCEPT_ATTRIBUTE } from '@/audio/decoder';
 import { LibraryView } from './library';
+import { PracticeView } from './practice';
 import { TrackBarView } from './trackBar';
 import { LyricsPanelView } from './lyricsPanel';
 import { defaultModeFor, ModeSwitchView, savedModeFor, saveModeFor } from './modeSwitch';
@@ -60,6 +61,12 @@ export function mountApp(root: HTMLElement): void {
   );
   const status = new StatusView();
   const grid = new SyllableGridView((seconds) => player.seek(seconds));
+
+  const practice = new PracticeView(store, {
+    onSeek: (seconds) => player.seek(seconds),
+    onPlay: () => void player.play(),
+    onPause: () => player.pause(),
+  });
   const lyricsPanel = new LyricsPanelView(store, player, {
     onBuild: () => void buildAndStudy(),
   });
@@ -256,6 +263,7 @@ export function mountApp(root: HTMLElement): void {
       grid.element,
     ),
     el('section', { class: 'stage__score' }, scoreScroll, inspector.element),
+    practice.element,
   );
 
   clear(root);
@@ -290,6 +298,7 @@ export function mountApp(root: HTMLElement): void {
     library,
     drawer,
     trackBar,
+    practice,
   ];
   store.events.on('change', (state) => {
     for (const view of views) view.update(state);
@@ -297,6 +306,16 @@ export function mountApp(root: HTMLElement): void {
     // One class drives the whole layout switch; the CSS does the rest.
     document.body.classList.toggle('mode-annotation', state.mode === 'annotation');
     document.body.classList.toggle('mode-learning', state.mode === 'learning');
+    document.body.classList.toggle('mode-practice', state.mode === 'practice');
+  });
+
+  // Leaving Practice releases the microphone, so the browser stops showing a
+  // recording indicator on a tab that is no longer listening.
+  let wasPractising = false;
+  store.events.on('change', (state) => {
+    const practising = state.mode === 'practice';
+    if (wasPractising && !practising) practice.release();
+    wasPractising = practising;
   });
 
   // --- choosing the mode ---------------------------------------------------
