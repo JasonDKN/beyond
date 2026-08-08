@@ -1,5 +1,5 @@
 import { Recorder, RecorderError, type Take } from '@/audio/recorder';
-import { computePeaks, detectOnsets, mixdown } from '@/audio/peaks';
+import { computePeaks, detectOnsets } from '@/audio/peaks';
 import type { State, Store } from '@/core/store';
 import { expectedSyllables, type ExpectedSyllable } from '@/practice/expected';
 import { describeScore, scoreTiming, type TimingScore } from '@/practice/score';
@@ -158,19 +158,14 @@ export class PracticeView {
     this.#recordButton.classList.remove('is-recording');
     this.#callbacks.onPause();
 
-    let take: Take | null = null;
-    try {
-      take = await this.#recorder.stop();
-    } catch (error) {
+    const take = this.#recorder.stop();
+    if (!take) {
       this.#hint.textContent =
-        error instanceof RecorderError ? error.message : 'The recording failed.';
+        'No audio reached the microphone. Check the right input device is selected, then try again.';
       this.#hint.classList.add('is-error');
       return;
     }
-    if (!take) {
-      this.#hint.textContent = 'Nothing was recorded.';
-      return;
-    }
+    this.#hint.classList.remove('is-error');
 
     const scored = this.#analyse(take);
     this.#takes.unshift(scored);
@@ -190,8 +185,10 @@ export class PracticeView {
    * recording began so they can be compared against the track's grid.
    */
   #analyse(take: Take): StoredTake {
-    const envelope = computePeaks(mixdown(take.buffer), TAKE_BUCKETS);
-    const onsets = detectOnsets(envelope, take.buffer.sampleRate).map(
+    // Samples come straight from the microphone tap — already mono, no decode
+    // step, so nothing between the mic and the analysis can misinterpret them.
+    const envelope = computePeaks(take.samples, TAKE_BUCKETS);
+    const onsets = detectOnsets(envelope, take.sampleRate).map(
       (time) => time + take.startedAtSec,
     );
 
