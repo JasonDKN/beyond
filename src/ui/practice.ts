@@ -22,7 +22,16 @@ export interface PracticeCallbacks {
   onSeek(seconds: number): void;
   onPlay(): void;
   onPause(): void;
+  /**
+   * Duck the backing track to `level`, or pass null to restore whatever the
+   * volume was before. Used while a take plays so your own voice sits on top
+   * of the mix rather than under it.
+   */
+  setBackingLevel(level: number | null): void;
 }
+
+/** How far the track is turned down while a take plays over it. */
+const BACKING_LEVEL = 0.55;
 
 interface StoredTake {
   readonly take: Take;
@@ -50,6 +59,16 @@ export class PracticeView {
   #takes: StoredTake[] = [];
   #current: StoredTake | null = null;
   #playback: HTMLAudioElement | null = null;
+  /** True while the song is playing underneath a take. */
+  #backing = false;
+  /**
+   * Play takes over the song rather than dry.
+   *
+   * On by default, because judging yourself against the backing is the point.
+   * Off is still worth having: dry is how you check a consonant you cannot
+   * pick out of the mix.
+   */
+  #withTrack = true;
 
   constructor(store: Store, callbacks: PracticeCallbacks) {
     this.#store = store;
@@ -326,6 +345,28 @@ export class PracticeView {
       );
     });
 
+    const withTrack = el('input', {
+      type: 'checkbox',
+      class: 'control__checkbox control__checkbox--small',
+      checked: this.#withTrack,
+      onchange: (event: Event) => {
+        this.#withTrack = (event.target as HTMLInputElement).checked;
+        this.#stopPlayback();
+      },
+    });
+
+    this.#takeList.appendChild(
+      el(
+        'label',
+        {
+          class: 'practice__withtrack',
+          title: 'Play takes over the song, starting from where you hit record',
+        },
+        withTrack,
+        el('span', {}, 'With track'),
+      ),
+    );
+
     this.#takeList.appendChild(
       el(
         'button',
@@ -366,17 +407,58 @@ export class PracticeView {
     this.#render();
   }
 
-  /** Play a take back on its own, so you can hear what the score is describing. */
+  /**
+   * Play a take back over the song, from where recording began.
+   *
+   * Hearing yourself dry tells you very little; hearing yourself against the
+   * backing is the actual test. The track is turned down while it plays so
+   * your voice sits on top, and restored afterwards.
+   *
+   * The take is advanced by the latency the scorer measured. That correction
+   * matters: without it your voice arrives a constant 100-odd milliseconds
+   * late no matter how well you performed, because that lag is your audio
+   * hardware, not your timing. Playing it raw would have your ears contradict
+   * the score — and the ears would be wrong.
+   */
   #playTake(entry: StoredTake): void {
     this.#stopPlayback();
-    this.#callbacks.onPause();
+
+    if (!this.#withTrack) {
+      this.#callbacks.onPause();
+      this.#startTakeAudio(entry, 0);
+      return;
+    }
+
+    this.#callbacks.onSeek(entry.take.startedAtSec);
+    this.#callbacks.setBackingLevel(BACKING_LEVEL);
+    this.#callbacks.onPlay();
+    this.#backing = true;
+
+    // Skip the leading lag so the voice lands where it was aimed.
+    this.#startTakeAudio(entry, Math.max(0, entry.score.offsetSec));
+  }
+
+  #startTakeAudio(entry: StoredTake, fromSec: number): void {
     const audio = new Audio(URL.createObjectURL(entry.take.blob));
     this.#playback = audio;
     audio.addEventListener('ended', () => this.#stopPlayback(), { once: true });
+    // currentTime can only be set once the browser knows the duration.
+    audio.addEventListener(
+      'loadedmetadata',
+      () => {
+        if (fromSec > 0 && fromSec < audio.duration) audio.currentTime = fromSec;
+      },
+      { once: true },
+    );
     void audio.play().catch(() => undefined);
   }
 
   #stopPlayback(): void {
+    if (this.#backing) {
+      this.#callbacks.onPause();
+      this.#callbacks.setBackingLevel(null);
+      this.#backing = false;
+    }
     if (!this.#playback) return;
     this.#playback.pause();
     URL.revokeObjectURL(this.#playback.src);

@@ -62,10 +62,23 @@ export function mountApp(root: HTMLElement): void {
   const status = new StatusView();
   const grid = new SyllableGridView((seconds) => player.seek(seconds));
 
+  // Remembers the level to put back, so ducking the backing track under a
+  // take never leaves the volume slider somewhere the user did not set it.
+  let volumeBeforeDuck: number | null = null;
+
   const practice = new PracticeView(store, {
     onSeek: (seconds) => player.seek(seconds),
     onPlay: () => void player.play(),
     onPause: () => player.pause(),
+    setBackingLevel: (level) => {
+      if (level === null) {
+        if (volumeBeforeDuck !== null) player.volume = volumeBeforeDuck;
+        volumeBeforeDuck = null;
+        return;
+      }
+      volumeBeforeDuck ??= player.volume;
+      player.volume = volumeBeforeDuck * level;
+    },
   });
   const lyricsPanel = new LyricsPanelView(store, player, {
     onBuild: () => void buildAndStudy(),
