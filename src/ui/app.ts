@@ -70,6 +70,7 @@ export function mountApp(root: HTMLElement): void {
     onSeek: (seconds) => player.seek(seconds),
     onPlay: () => void player.play(),
     onPause: () => player.pause(),
+    getPosition: () => player.currentTime,
     setBackingLevel: (level) => {
       if (level === null) {
         if (volumeBeforeDuck !== null) player.volume = volumeBeforeDuck;

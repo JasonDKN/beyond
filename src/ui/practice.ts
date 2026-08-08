@@ -1,4 +1,6 @@
+import { audioContext } from '@/audio/decoder';
 import { Recorder, RecorderError, type Take } from '@/audio/recorder';
+import { takeStartOffset } from '@/practice/sync';
 import { computePeaks, detectOnsets } from '@/audio/peaks';
 import type { State, Store } from '@/core/store';
 import { expectedSyllables, type ExpectedSyllable } from '@/practice/expected';
@@ -22,6 +24,8 @@ export interface PracticeCallbacks {
   onSeek(seconds: number): void;
   onPlay(): void;
   onPause(): void;
+  /** Where the song actually is — not where it was asked to be. */
+  getPosition(): number;
   /**
    * Duck the backing track to `level`, or pass null to restore whatever the
    * volume was before. Used while a take plays so your own voice sits on top
@@ -58,9 +62,18 @@ export class PracticeView {
 
   #takes: StoredTake[] = [];
   #current: StoredTake | null = null;
-  #playback: HTMLAudioElement | null = null;
+  #source: AudioBufferSourceNode | null = null;
+  #syncFrame = 0;
   /** True while the song is playing underneath a take. */
   #backing = false;
+  /**
+   * Manual sync trim, in seconds. Positive pushes your voice later.
+   *
+   * The measured latency is an estimate from onset detection, and audio
+   * hardware varies more than any estimate can allow for. Rather than insist
+   * the number is right, this lets you settle it by ear in a few seconds.
+   */
+  #trimSec = 0;
   /**
    * Play takes over the song rather than dry.
    *
@@ -345,6 +358,23 @@ export class PracticeView {
       );
     });
 
+    // Sync trim. The measured latency is an estimate; this is the escape hatch
+    // for when your hardware disagrees with it.
+    const trim = el('input', {
+      type: 'range',
+      class: 'practice__trim',
+      min: '-250',
+      max: '250',
+      step: '10',
+      value: String(Math.round(this.#trimSec * 1000)),
+      'aria-label': 'Nudge your voice earlier or later against the track',
+      oninput: (event: Event) => {
+        this.#trimSec = Number((event.target as HTMLInputElement).value) / 1000;
+        const label = this.#takeList.querySelector('.practice__trim-value');
+        if (label) label.textContent = formatTrim(this.#trimSec);
+      },
+    });
+
     const withTrack = el('input', {
       type: 'checkbox',
       class: 'control__checkbox control__checkbox--small',
@@ -364,6 +394,16 @@ export class PracticeView {
         },
         withTrack,
         el('span', {}, 'With track'),
+      ),
+    );
+
+    this.#takeList.appendChild(
+      el(
+        'label',
+        { class: 'practice__trim-group', title: 'Nudge your voice against the track, by ear' },
+        el('span', { class: 'practice__trim-label' }, 'Sync'),
+        trim,
+        el('span', { class: 'practice__trim-value' }, formatTrim(this.#trimSec)),
       ),
     );
 
@@ -425,45 +465,105 @@ export class PracticeView {
 
     if (!this.#withTrack) {
       this.#callbacks.onPause();
-      this.#startTakeAudio(entry, 0);
+      this.#startSource(entry, 0);
       return;
     }
 
-    this.#callbacks.onSeek(entry.take.startedAtSec);
+    const recordedAt = entry.take.startedAtSec;
+    this.#callbacks.onSeek(recordedAt);
     this.#callbacks.setBackingLevel(BACKING_LEVEL);
     this.#callbacks.onPlay();
     this.#backing = true;
 
-    // Skip the leading lag so the voice lands where it was aimed.
-    this.#startTakeAudio(entry, Math.max(0, entry.score.offsetSec));
+    // Wait until the song is genuinely rolling before starting the take.
+    //
+    // An <audio> element does not begin the instant play() is called — it
+    // resumes, buffers, and starts some tens of milliseconds later. Starting
+    // the take at the same moment as the *call* therefore put the voice ahead
+    // of a song that had not started yet, which then read as the voice being
+    // late once the song caught up. Aligning to where the song actually is
+    // removes that guesswork entirely.
+    const deadline = performance.now() + 2000;
+    const waitForRoll = (): void => {
+      const position = this.#callbacks.getPosition();
+      if (position > recordedAt + 0.001) {
+        this.#startSource(
+          entry,
+          takeStartOffset({
+            trackPositionSec: position,
+            recordedAtSec: recordedAt,
+            latencySec: Math.max(0, entry.score.offsetSec),
+            trimSec: this.#trimSec,
+            takeDurationSec: entry.take.durationSec,
+          }),
+        );
+        return;
+      }
+      // Autoplay refused, or the file will not roll. Play the take dry rather
+      // than spinning forever on a song that is never going to start.
+      if (performance.now() > deadline) {
+        this.#startSource(entry, 0);
+        return;
+      }
+      this.#syncFrame = requestAnimationFrame(waitForRoll);
+    };
+    this.#syncFrame = requestAnimationFrame(waitForRoll);
   }
 
-  #startTakeAudio(entry: StoredTake, fromSec: number): void {
-    const audio = new Audio(URL.createObjectURL(entry.take.blob));
-    this.#playback = audio;
-    audio.addEventListener('ended', () => this.#stopPlayback(), { once: true });
-    // currentTime can only be set once the browser knows the duration.
-    audio.addEventListener(
-      'loadedmetadata',
-      () => {
-        if (fromSec > 0 && fromSec < audio.duration) audio.currentTime = fromSec;
-      },
-      { once: true },
+  /**
+   * Play the take through Web Audio rather than an audio element.
+   *
+   * The samples are already in memory, so a buffer source starts immediately
+   * and seeks with sample accuracy — no blob fetch, no header parse, no
+   * `loadedmetadata` race deciding whether the offset got applied at all.
+   */
+  #startSource(entry: StoredTake, fromSec: number): void {
+    const context = audioContext();
+    const buffer = context.createBuffer(
+      1,
+      entry.take.samples.length,
+      entry.take.sampleRate,
     );
-    void audio.play().catch(() => undefined);
+    // `set` rather than copyToChannel: the samples arrive typed against a
+    // generic ArrayBufferLike (they may have come from a worklet), which
+    // copyToChannel's signature refuses.
+    buffer.getChannelData(0).set(entry.take.samples);
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.onended = () => this.#stopPlayback();
+    source.start(0, Math.max(0, Math.min(fromSec, Math.max(0, buffer.duration - 0.01))));
+    this.#source = source;
   }
 
   #stopPlayback(): void {
+    if (this.#syncFrame) {
+      cancelAnimationFrame(this.#syncFrame);
+      this.#syncFrame = 0;
+    }
     if (this.#backing) {
       this.#callbacks.onPause();
       this.#callbacks.setBackingLevel(null);
       this.#backing = false;
     }
-    if (!this.#playback) return;
-    this.#playback.pause();
-    URL.revokeObjectURL(this.#playback.src);
-    this.#playback = null;
+    if (this.#source) {
+      this.#source.onended = null;
+      try {
+        this.#source.stop();
+      } catch {
+        // Already finished; stopping twice throws and means nothing.
+      }
+      this.#source.disconnect();
+      this.#source = null;
+    }
   }
+}
+
+function formatTrim(seconds: number): string {
+  const ms = Math.round(seconds * 1000);
+  if (ms === 0) return 'auto';
+  return `${ms > 0 ? '+' : ''}${ms} ms`;
 }
 
 function bandFor(score: number): string {

@@ -254,6 +254,56 @@ body.mode-practice .control--toggle {
   color: var(--rose);
 }
 
+/*
+ * Sync trim. The measured latency is an estimate and audio hardware varies,
+ * so rather than insisting the number is right, this settles it by ear.
+ */
+.practice__trim-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
+}
+
+.practice__trim-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ghost);
+}
+
+.practice__trim {
+  appearance: none;
+  width: 6rem;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, rgba(140, 190, 255, 0.5), rgba(124, 245, 213, 0.5));
+  cursor: pointer;
+}
+
+.practice__trim::-webkit-slider-thumb {
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+.practice__trim::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+.practice__trim-value {
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--paper-dim);
+  min-width: 3.5rem;
+}
+
 .practice__clear {
   margin-left: var(--space-2);
   padding: 0.25rem 0.6rem;

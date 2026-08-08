@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeScore, estimateOffset, scoreTiming } from '@/practice/score';
+import { takeStartOffset } from '@/practice/sync';
 
 /**
  * The scoring is only meaningful if the constant hardware lag is removed
@@ -107,5 +108,40 @@ describe('plain-language summary', () => {
 
   it('calls out a silent recording rather than scoring it zero silently', () => {
     expect(describeScore(scoreTiming(grid, []))).toContain('microphone');
+  });
+});
+
+describe('take/track sync offset', () => {
+  const base = { recordedAtSec: 10, latencySec: 0.12, takeDurationSec: 8 };
+
+  it('skips the latency at the moment the song reaches the record point', () => {
+    // At the record point itself, the take must already be `latency` in —
+    // that opening stretch was captured before the singer had heard anything.
+    expect(takeStartOffset({ ...base, trackPositionSec: 10 })).toBeCloseTo(0.12, 3);
+  });
+
+  it('advances with the song', () => {
+    expect(takeStartOffset({ ...base, trackPositionSec: 12 })).toBeCloseTo(2.12, 3);
+  });
+
+  it('advances the take rather than delaying it — the sign that caused the bug', () => {
+    const withLatency = takeStartOffset({ ...base, trackPositionSec: 10 });
+    const withoutLatency = takeStartOffset({ ...base, latencySec: 0, trackPositionSec: 10 });
+    // A larger offset means starting further into the take, i.e. the voice
+    // arrives sooner. Latency must therefore *increase* the offset.
+    expect(withLatency).toBeGreaterThan(withoutLatency);
+  });
+
+  it('lets a positive trim push the voice later', () => {
+    const neutral = takeStartOffset({ ...base, trackPositionSec: 12 });
+    const later = takeStartOffset({ ...base, trackPositionSec: 12, trimSec: 0.1 });
+    expect(later).toBeLessThan(neutral);
+    expect(neutral - later).toBeCloseTo(0.1, 3);
+  });
+
+  it('never returns a negative offset or runs past the end of the take', () => {
+    expect(takeStartOffset({ ...base, trackPositionSec: 5 })).toBe(0);
+    expect(takeStartOffset({ ...base, trackPositionSec: 999 })).toBeCloseTo(7.99, 2);
+    expect(takeStartOffset({ ...base, trackPositionSec: 12, trimSec: 99 })).toBe(0);
   });
 });
