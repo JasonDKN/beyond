@@ -2,11 +2,14 @@ import type { State } from '@/core/store';
 import {
   deleteTrack,
   deleteTrackAudio,
+  exportLibrary,
   formatBytes,
   formatWhen,
+  importLibrary,
   listTracks,
   type TrackSummary,
 } from '@/storage/library';
+import { download } from '@/export';
 import { clear, el, formatClock } from './dom';
 
 /**
@@ -46,12 +49,27 @@ export class LibraryView {
   #variant: LibraryVariant;
   /** Last state seen, so a refresh can re-apply visibility without one. */
   #lastState: State | null = null;
+  /** Set when storage could not be read — distinct from having no tracks. */
+  #error: string | null = null;
+  #restoreInput: HTMLInputElement;
 
   constructor(callbacks: LibraryCallbacks, variant: LibraryVariant = 'opening') {
     this.#callbacks = callbacks;
     this.#variant = variant;
     this.#list = el('div', { class: 'library__list' });
     this.#summary = el('p', { class: 'library__summary' });
+
+    this.#restoreInput = el('input', {
+      type: 'file',
+      class: 'visually-hidden',
+      accept: '.json,application/json',
+      onchange: (event: Event) => {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (file) void this.#restore(file);
+      },
+    }) as HTMLInputElement;
 
     this.element = el(
       'section',
@@ -63,6 +81,30 @@ export class LibraryView {
         { class: 'library__head' },
         el('h2', { class: 'library__title' }, 'Your tracks'),
         this.#summary,
+        // Backup lives next to the list, not in a settings menu. It is only
+        // worth having if it is in front of you at the moment you think
+        // "I should not lose this".
+        el(
+          'button',
+          {
+            class: 'library__backup',
+            type: 'button',
+            title: 'Download your lyrics, timings and translations as a file',
+            onclick: () => void this.#backup(),
+          },
+          'Back up',
+        ),
+        el(
+          'button',
+          {
+            class: 'library__backup',
+            type: 'button',
+            title: 'Restore tracks from a backup file',
+            onclick: () => this.#restoreInput.click(),
+          },
+          'Restore',
+        ),
+        this.#restoreInput,
         variant === 'drawer'
           ? el(
               'button',
@@ -97,7 +139,18 @@ export class LibraryView {
 
   /** Re-read from storage. Cheap — the audio blobs live in a separate store. */
   async refresh(): Promise<void> {
-    this.#tracks = await listTracks();
+    try {
+      this.#tracks = await listTracks();
+      this.#error = null;
+    } catch (error) {
+      // Crucially, do *not* fall back to an empty list. Showing "no saved
+      // tracks" when storage merely failed to open reads as "your work is
+      // gone" and invites starting over — which is how work actually gets
+      // lost. Say what happened instead.
+      this.#tracks = [];
+      this.#error =
+        error instanceof Error ? error.message : 'The library could not be read.';
+    }
     this.#render();
   }
 
@@ -117,6 +170,25 @@ export class LibraryView {
 
   #render(): void {
     clear(this.#list);
+
+    // A read failure is not an empty library, and must never be shown as one.
+    if (this.#error) {
+      this.#summary.textContent = '';
+      this.#list.appendChild(
+        el(
+          'div',
+          { class: 'library__problem' },
+          el('p', {}, `Your saved tracks could not be loaded. ${this.#error}`),
+          el(
+            'p',
+            { class: 'library__problem-hint' },
+            'Your work has not been deleted — this is a problem reading storage. Private browsing and full disks are the usual causes.',
+          ),
+        ),
+      );
+      this.#applyVisibility();
+      return;
+    }
 
     // Visibility is decided in one place only — see #applyVisibility. Deciding
     // it here too meant a refresh could pop the drawer open over the workspace
@@ -148,7 +220,9 @@ export class LibraryView {
       this.element.classList.toggle('is-hidden', !show);
       return;
     }
-    const show = !state?.audio && this.#tracks.length > 0;
+    // Shown when there is something to say — tracks, or a storage problem
+    // worth reporting rather than hiding.
+    const show = !state?.audio && (this.#tracks.length > 0 || this.#error !== null);
     this.element.classList.toggle('is-hidden', !show);
   }
 
@@ -211,6 +285,31 @@ export class LibraryView {
     );
 
     return el('div', { class: 'library__row', 'data-track-id': track.id }, open, actions);
+  }
+
+  async #backup(): Promise<void> {
+    try {
+      const json = await exportLibrary();
+      const stamp = new Date().toISOString().slice(0, 10);
+      download(`beyond-library-${stamp}.json`, json, 'application/json');
+      this.#summary.textContent = 'Backup downloaded.';
+    } catch {
+      this.#summary.textContent = 'Could not read the library to back it up.';
+    }
+  }
+
+  async #restore(file: File): Promise<void> {
+    try {
+      const result = await importLibrary(await file.text());
+      await this.refresh();
+      this.#summary.textContent =
+        result.restored === 0
+          ? `Nothing restored — your saved copies are already newer (${result.skipped} skipped).`
+          : `Restored ${result.restored} track${result.restored === 1 ? '' : 's'}.`;
+    } catch (error) {
+      this.#summary.textContent =
+        error instanceof Error ? error.message : 'That backup could not be read.';
+    }
   }
 
   async #dropAudio(track: TrackSummary): Promise<void> {

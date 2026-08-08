@@ -82,24 +82,113 @@ export function libraryAvailable(): boolean {
 // Reading
 // ---------------------------------------------------------------------------
 
+/**
+ * List saved tracks.
+ *
+ * Deliberately throws rather than returning an empty array on failure. An
+ * empty library and a library that could not be read look identical on screen,
+ * and "no saved tracks" is a terrifying thing to show someone whose work is
+ * actually fine — it invites them to start over and lose it for real. The
+ * caller is expected to tell the difference.
+ */
 export async function listTracks(): Promise<TrackSummary[]> {
-  if (!libraryAvailable()) return [];
-  try {
-    const records = await tx<TrackRecord[]>(TRACKS, 'readonly', (store) => store.getAll());
-    return records
-      .map((record) => {
-        const lines = record.sheet?.lines ?? [];
-        const { sheet: _sheet, ...rest } = record;
-        return {
-          ...rest,
-          totalLines: lines.length,
-          timedLines: lines.filter((line) => line.startSec !== null).length,
-        };
-      })
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  } catch {
-    return [];
+  if (!libraryAvailable()) {
+    throw new Error('This browser has no storage available for the library.');
   }
+  const records = await tx<TrackRecord[]>(TRACKS, 'readonly', (store) => store.getAll());
+  return records
+    .map((record) => {
+      const lines = record.sheet?.lines ?? [];
+      const { sheet: _sheet, ...rest } = record;
+      return {
+        ...rest,
+        totalLines: lines.length,
+        timedLines: lines.filter((line) => line.startSec !== null).length,
+      };
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+// ---------------------------------------------------------------------------
+// Backup
+// ---------------------------------------------------------------------------
+
+interface Backup {
+  readonly format: 'beyond-library';
+  readonly version: 1;
+  readonly exportedAt: string;
+  readonly tracks: readonly TrackRecord[];
+}
+
+/**
+ * Export every track's work as JSON.
+ *
+ * Audio is deliberately excluded: it is megabytes per song and you already
+ * have the files. What is irreplaceable is the tapping — the timings, the
+ * lyrics, the translations — and that is kilobytes. A backup you will actually
+ * keep beats a complete one you will not.
+ */
+export async function exportLibrary(): Promise<string> {
+  const records = await tx<TrackRecord[]>(TRACKS, 'readonly', (store) => store.getAll());
+  const backup: Backup = {
+    format: 'beyond-library',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    tracks: records.map((record) => ({ ...record, hasAudio: false, bytes: 0 })),
+  };
+  return JSON.stringify(backup, null, 2);
+}
+
+export interface RestoreResult {
+  readonly restored: number;
+  readonly skipped: number;
+}
+
+/**
+ * Merge a backup back in.
+ *
+ * Never destructive: a track already present keeps whichever copy was updated
+ * more recently, so restoring an old backup cannot roll back newer work. If
+ * you want the backup's version, delete the track first.
+ */
+export async function importLibrary(json: string): Promise<RestoreResult> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error('That file is not valid JSON.');
+  }
+
+  const backup = parsed as Partial<Backup>;
+  if (backup.format !== 'beyond-library' || !Array.isArray(backup.tracks)) {
+    throw new Error('That does not look like a Beyond library backup.');
+  }
+
+  let restored = 0;
+  let skipped = 0;
+
+  for (const record of backup.tracks) {
+    if (!record?.id || !record.sheet) {
+      skipped += 1;
+      continue;
+    }
+    const existing = await getTrack(record.id);
+    if (existing && existing.updatedAt >= record.updatedAt) {
+      skipped += 1;
+      continue;
+    }
+    // Keep whatever audio is already stored; the backup carries none.
+    await tx(TRACKS, 'readwrite', (store) =>
+      store.put({
+        ...record,
+        hasAudio: existing?.hasAudio ?? false,
+        bytes: existing?.bytes ?? 0,
+      }),
+    );
+    restored += 1;
+  }
+
+  return { restored, skipped };
 }
 
 export async function getTrack(id: string): Promise<TrackRecord | null> {

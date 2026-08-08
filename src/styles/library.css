@@ -158,3 +158,46 @@ body.has-audio .opening {
   color: rgba(108, 120, 155, 0.7);
   font-style: italic;
 }
+
+/* --- Backup, and read failures ------------------------------------------- */
+
+.library__backup {
+  margin-left: var(--space-2);
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-soft);
+  font-size: 0.65rem;
+  color: var(--ghost);
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.library__backup:hover {
+  color: var(--paper);
+  border-color: rgba(124, 245, 213, 0.4);
+}
+
+/*
+ * A storage failure, stated as a failure.
+ *
+ * Amber rather than red, and explicit that nothing has been deleted — someone
+ * who believes their work is gone will start over, which is how it actually
+ * gets lost.
+ */
+.library__problem {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 184, 107, 0.35);
+  background: var(--amber-soft);
+  color: var(--paper-dim);
+  font-size: var(--step--1);
+}
+
+.library__problem-hint {
+  color: var(--ghost);
+  font-size: 0.7rem;
+}
