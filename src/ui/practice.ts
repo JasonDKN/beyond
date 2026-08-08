@@ -210,7 +210,28 @@ export class PracticeView {
 
   #render(): void {
     const current = this.#current;
-    if (!current) return;
+    if (!current) {
+      // Nothing selected — either no takes yet, or the last one was deleted.
+      this.#scoreValue.textContent = '—';
+      this.#scoreValue.className = 'practice__score-value';
+      this.#scoreDetail.textContent = '';
+      clear(this.#heatmap);
+      this.#renderTakes();
+      return;
+    }
+
+    // A take recorded past the end of your timed lines has nothing to be
+    // graded against. Scoring that zero would be a lie — there was no target
+    // to miss — so say what actually happened.
+    if (current.expected.length === 0) {
+      this.#scoreValue.textContent = '—';
+      this.#scoreValue.className = 'practice__score-value';
+      this.#scoreDetail.textContent =
+        'No timed lines in this stretch of the track, so there was nothing to score against. Set a loop over a passage you have tapped.';
+      clear(this.#heatmap);
+      this.#renderTakes();
+      return;
+    }
 
     this.#scoreValue.textContent = String(current.score.overall);
     this.#scoreValue.className = `practice__score-value ${bandFor(current.score.overall)}`;
@@ -257,25 +278,92 @@ export class PracticeView {
 
     this.#takes.forEach((entry, index) => {
       const isCurrent = entry === this.#current;
-      this.#takeList.appendChild(
-        el(
-          'button',
-          {
-            class: `practice__take${isCurrent ? ' is-current' : ''}`,
-            type: 'button',
-            title: `From ${formatClock(entry.take.startedAtSec)} · ${entry.take.durationSec.toFixed(1)}s`,
-            onclick: () => {
-              this.#current = entry;
-              this.#render();
-              this.#playTake(entry);
-            },
+
+      // Select and delete are separate buttons in a wrapper rather than one
+      // button with an icon inside it — nesting interactive elements is
+      // invalid, and it makes the delete target ambiguous to a screen reader.
+      const select = el(
+        'button',
+        {
+          class: 'practice__take-select',
+          type: 'button',
+          title: `From ${formatClock(entry.take.startedAtSec)} · ${entry.take.durationSec.toFixed(1)}s — click to hear it back`,
+          onclick: () => {
+            this.#current = entry;
+            this.#render();
+            this.#playTake(entry);
           },
-          el('span', { class: `practice__take-score ${bandFor(entry.score.overall)}` },
-            String(entry.score.overall)),
-          el('span', { class: 'practice__take-when' }, index === 0 ? 'latest' : `#${this.#takes.length - index}`),
+        },
+        el(
+          'span',
+          { class: `practice__take-score ${bandFor(entry.score.overall)}` },
+          String(entry.score.overall),
+        ),
+        el(
+          'span',
+          { class: 'practice__take-when' },
+          index === 0 ? 'latest' : `#${this.#takes.length - index}`,
         ),
       );
+
+      // No confirmation step. A take is a few seconds of audio you can redo in
+      // a few seconds — quite unlike deleting a track, which loses an evening
+      // of tapping and does ask twice.
+      const remove = el(
+        'button',
+        {
+          class: 'practice__take-delete',
+          type: 'button',
+          'aria-label': `Delete take ${this.#takes.length - index}`,
+          title: 'Delete this take',
+          onclick: () => this.#deleteTake(entry),
+        },
+        '✕',
+      );
+
+      this.#takeList.appendChild(
+        el('div', { class: `practice__take${isCurrent ? ' is-current' : ''}` }, select, remove),
+      );
     });
+
+    this.#takeList.appendChild(
+      el(
+        'button',
+        {
+          class: 'practice__clear',
+          type: 'button',
+          title: 'Delete every take',
+          onclick: () => this.#clearTakes(),
+        },
+        'Clear all',
+      ),
+    );
+  }
+
+  #deleteTake(entry: StoredTake): void {
+    const index = this.#takes.indexOf(entry);
+    if (index < 0) return;
+
+    // If it is playing, stop it — otherwise a deleted take keeps talking.
+    if (this.#current === entry) this.#stopPlayback();
+
+    this.#takes.splice(index, 1);
+
+    if (this.#current === entry) {
+      // Fall to the take that took its place in the list, or the one before
+      // it if we removed the last, so the panel never lands on nothing while
+      // takes remain.
+      this.#current = this.#takes[index] ?? this.#takes[index - 1] ?? null;
+    }
+
+    this.#render();
+  }
+
+  #clearTakes(): void {
+    this.#stopPlayback();
+    this.#takes = [];
+    this.#current = null;
+    this.#render();
   }
 
   /** Play a take back on its own, so you can hear what the score is describing. */

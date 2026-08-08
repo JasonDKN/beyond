@@ -212,16 +212,63 @@ body.mode-practice .control--toggle {
 
 .practice__take {
   display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 0.3rem 0.7rem;
+  align-items: stretch;
   border-radius: var(--radius-pill);
   border: var(--border-soft);
   background: rgba(16, 20, 40, 0.6);
+  overflow: hidden;
 }
 
 .practice__take:hover {
   border-color: rgba(140, 168, 232, 0.4);
+}
+
+.practice__take-select {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0.3rem 0.35rem 0.3rem 0.7rem;
+}
+
+/*
+ * The delete target only appears on hover or keyboard focus. A row of takes
+ * you are comparing should read as scores, not as a row of X buttons — but it
+ * has to stay reachable without a mouse, hence :focus-visible.
+ */
+.practice__take-delete {
+  padding: 0 0.5rem 0 0.35rem;
+  font-size: 0.7rem;
+  color: var(--ghost);
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.practice__take:hover .practice__take-delete,
+.practice__take-delete:focus-visible {
+  opacity: 1;
+}
+
+.practice__take-delete:hover {
+  color: var(--rose);
+}
+
+.practice__clear {
+  margin-left: var(--space-2);
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: 0.65rem;
+  color: var(--ghost);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.practice__clear:hover {
+  color: var(--rose);
+  border-color: rgba(255, 143, 177, 0.35);
 }
 
 .practice__take.is-current {
