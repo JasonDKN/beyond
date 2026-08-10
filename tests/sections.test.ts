@@ -13,6 +13,7 @@ import {
   type LyricSheet,
 } from '@/transcription/providers/lyrics';
 import { parseClock } from '@/ui/compartmentalize';
+import { assignLanes } from '@/ui/sectionBar';
 
 /**
  * Sections, artists and repeats — tested on invented placeholder lines so the
@@ -272,5 +273,40 @@ describe('typing a timestamp', () => {
     expect(parseClock('')).toBeNull();
     expect(parseClock('abc')).toBeNull();
     expect(parseClock('-4')).toBeNull();
+  });
+});
+
+describe('stacking parts that overlap', () => {
+  const span = (startSec: number, endSec: number) => ({ startSec, endSec });
+
+  it('keeps a tidy song on one row', () => {
+    expect(assignLanes([span(0, 10), span(10, 20), span(20, 30)])).toEqual([0, 0, 0]);
+  });
+
+  it('drops an overlapping part onto the next row', () => {
+    // The reported bug: ends that run into the next part's start drew every
+    // block at the same height, on top of each other.
+    expect(assignLanes([span(0, 10), span(8, 26), span(24, 40), span(30, 52)])).toEqual([
+      0, 1, 0, 1,
+    ]);
+  });
+
+  it('opens a third row only when three parts are live at once', () => {
+    expect(assignLanes([span(0, 30), span(5, 30), span(10, 30)])).toEqual([0, 1, 2]);
+    expect(assignLanes([span(0, 30), span(5, 30), span(31, 40)])).toEqual([0, 1, 0]);
+  });
+
+  it('treats touching parts as adjacent, not overlapping', () => {
+    // Floating point: an end of 10 and a start of 10 must not cost a row.
+    expect(assignLanes([span(0, 10), span(10.0000001, 20)])).toEqual([0, 0]);
+  });
+
+  it('reuses the earliest free row', () => {
+    const lanes = assignLanes([span(0, 100), span(1, 5), span(6, 10)]);
+    expect(lanes).toEqual([0, 1, 1]);
+  });
+
+  it('handles nothing at all', () => {
+    expect(assignLanes([])).toEqual([]);
   });
 });

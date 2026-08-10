@@ -450,14 +450,20 @@
  */
 .sections__track {
   position: relative;
-  height: 1.9rem;
+  --lane-height: 1.6rem;
+  --lane-gap: 2px;
+  /* One row per overlapping part; see the lane assignment in sectionBar.ts. */
+  height: calc(
+    var(--lanes, 1) * var(--lane-height) + (var(--lanes, 1) - 1) * var(--lane-gap)
+  );
+  transition: height var(--duration-mid) var(--ease-out);
 }
 
 .sections__block {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  min-width: 0;
+  height: var(--lane-height);
+  /* Narrow parts must stay clickable even when the label cannot fit. */
+  min-width: 10px;
   display: flex;
   align-items: center;
   justify-content: center;

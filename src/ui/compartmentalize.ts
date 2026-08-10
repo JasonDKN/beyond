@@ -444,13 +444,32 @@ export class CompartmentalizeView {
         : section.occurrences[0].endSec - section.occurrences[0].startSec;
 
     const startSec = first?.startSec ?? playhead;
-    const endSec = Math.min(first?.endSec ?? startSec + length, duration || startSec + length);
+    let endSec = Math.min(first?.endSec ?? startSec + length, duration || startSec + length);
+
+    // Stop the guessed end from running into whatever comes next. Overlaps are
+    // allowed — a hook's tail under a verse is a real thing — but one you did
+    // not ask for is just a mess to clean up.
+    const nextStart = this.#nextStartAfter(startSec, section.id);
+    if (nextStart !== null && nextStart > startSec) endSec = Math.min(endSec, nextStart);
 
     this.#patchSection(section.id, {
       occurrences: [...section.occurrences, { id: freshId('occ'), startSec, endSec }].sort(
         (a, b) => a.startSec - b.startSec,
       ),
     });
+  }
+
+  /** The earliest occurrence start after `from`, across every other section. */
+  #nextStartAfter(from: number, exceptSectionId: string): number | null {
+    let best: number | null = null;
+    for (const section of this.#sections()) {
+      if (section.id === exceptSectionId) continue;
+      for (const occurrence of section.occurrences) {
+        if (occurrence.startSec <= from + 0.01) continue;
+        if (best === null || occurrence.startSec < best) best = occurrence.startSec;
+      }
+    }
+    return best;
   }
 
   #patchOccurrence(
