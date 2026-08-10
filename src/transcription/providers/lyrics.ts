@@ -21,10 +21,37 @@ import { interpolateWordTimings, progressReporter, TranscriptionError } from '..
  * the difference and needed no changes at all.
  */
 
+/** The parts a song is built from. */
+export type SectionKind =
+  | 'intro'
+  | 'verse'
+  | 'pre-chorus'
+  | 'chorus'
+  | 'post-chorus'
+  | 'bridge'
+  | 'refrain'
+  | 'outro'
+  | 'other';
+
+export interface LyricSection {
+  readonly id: string;
+  /** As written — "Verse 2", "Hook". */
+  readonly label: string;
+  readonly kind: SectionKind;
+  /**
+   * Set when this section's words were copied from an earlier section with
+   * the same name. Writing `[Chorus]` a second time with nothing under it
+   * brings the words back without retyping them; only the timings are new.
+   */
+  readonly repeatOf?: string;
+}
+
 export interface LyricLine {
   readonly text: string;
   /** Seconds. `null` until the line has been tapped. */
   readonly startSec: number | null;
+  /** Which section this line belongs to. */
+  readonly sectionId?: string;
   /**
    * What the line means, in your own words.
    *
@@ -40,10 +67,233 @@ export interface LyricSheet {
   readonly lines: readonly LyricLine[];
   /** Identifies which audio file these timings belong to. */
   readonly audioKey: string;
+  readonly sections?: readonly LyricSection[];
 }
 
 export function emptySheet(language: LanguageTag = 'ko'): LyricSheet {
-  return { language, lines: [], audioKey: '' };
+  return { language, lines: [], audioKey: '', sections: [] };
+}
+
+/** Work out what kind of part a section heading names. */
+export function sectionKindFor(label: string): SectionKind {
+  const text = label.toLowerCase();
+  // Pre-chorus before chorus, or "pre-chorus" matches the chorus rule first.
+  if (/pre[\s-]?(chorus|hook)/.test(text)) return 'pre-chorus';
+  if (/post[\s-]?(chorus|hook)/.test(text)) return 'post-chorus';
+  if (/chorus|hook/.test(text)) return 'chorus';
+  if (/verse/.test(text)) return 'verse';
+  if (/bridge/.test(text)) return 'bridge';
+  if (/refrain/.test(text)) return 'refrain';
+  if (/intro/.test(text)) return 'intro';
+  if (/outro|ending/.test(text)) return 'outro';
+  return 'other';
+}
+
+/** Section headings are matched loosely on their name, so "Hook" == "hook 2". */
+function sectionKey(label: string): string {
+  return label.toLowerCase().replace(/[^a-z가-힣]+/g, '');
+}
+
+export interface ParsedLyrics {
+  readonly lines: LyricLine[];
+  readonly sections: LyricSection[];
+}
+
+/**
+ * Parse pasted text into sections and lines.
+ *
+ * A line in brackets — `[Chorus]`, `(Verse 2)` — is a heading rather than
+ * something to sing. Headings were previously discarded; now they organise
+ * the sheet, which matters most for the part that repeats: writing `[Hook]` a
+ * second time with nothing beneath it brings back the words from the first
+ * `[Hook]`, so a chorus that recurs four times is typed once and tapped four
+ * times.
+ */
+export function parseSheet(raw: string, existing?: LyricSheet): ParsedLyrics {
+  const previous = new Map<string, number>();
+  const previousTranslations = new Map<string, string>();
+  for (const line of existing?.lines ?? []) {
+    if (line.startSec !== null) previous.set(line.text, line.startSec);
+    if (line.translation) previousTranslations.set(line.text, line.translation);
+  }
+
+  const sections: LyricSection[] = [];
+  const lines: LyricLine[] = [];
+  /** First section seen under each heading name, for resolving repeats. */
+  const firstByKey = new Map<string, string>();
+  /** The words belonging to each section, so a repeat can copy them. */
+  const wordsBySection = new Map<string, string[]>();
+  let current: LyricSection | null = null;
+
+  /**
+   * Timings are carried across an edit by line text, but a repeated chorus has
+   * the *same* text in several places. Handing every repeat the first
+   * occurrence's time would stack the whole song at one moment, so each
+   * remembered time is consumed once and in order.
+   */
+  const used = new Map<string, number>();
+  const takeTime = (text: string): number | null => {
+    const seen = used.get(text) ?? 0;
+    used.set(text, seen + 1);
+    // Only the first occurrence inherits; later repeats start untimed.
+    return seen === 0 ? (previous.get(text) ?? null) : null;
+  };
+
+  const addLine = (text: string): void => {
+    const translation = previousTranslations.get(text);
+    lines.push({
+      text,
+      startSec: takeTime(text),
+      ...(current ? { sectionId: current.id } : {}),
+      ...(translation ? { translation } : {}),
+    });
+    if (current) wordsBySection.get(current.id)?.push(text);
+  };
+
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.length === 0) continue;
+
+    const heading = /^[[(](.+)[\])]$/.exec(line);
+    if (heading) {
+      const label = (heading[1] ?? '').trim();
+      const key = sectionKey(label);
+      const id = `sec-${sections.length}`;
+      const source = firstByKey.get(key);
+
+      current = {
+        id,
+        label,
+        kind: sectionKindFor(label),
+        ...(source ? { repeatOf: source } : {}),
+      };
+      sections.push(current);
+      wordsBySection.set(id, []);
+      if (!source) firstByKey.set(key, id);
+      continue;
+    }
+
+    addLine(line);
+  }
+
+  // Any section left empty that names an earlier one inherits its words.
+  for (const section of sections) {
+    if (!section.repeatOf) continue;
+    if ((wordsBySection.get(section.id)?.length ?? 0) > 0) continue;
+    const source = wordsBySection.get(section.repeatOf) ?? [];
+    if (source.length === 0) continue;
+
+    // Insert the copied lines in the right place: immediately after the
+    // heading, which is wherever the next section's lines begin.
+    const insertAt = indexAfterSection(lines, sections, section.id);
+    const copied = source.map<LyricLine>((text) => ({
+      text,
+      startSec: takeTime(text),
+      sectionId: section.id,
+    }));
+    lines.splice(insertAt, 0, ...copied);
+    wordsBySection.set(section.id, [...source]);
+  }
+
+  return { lines, sections };
+}
+
+/** Where a section's lines should go, given the sections that follow it. */
+function indexAfterSection(
+  lines: readonly LyricLine[],
+  sections: readonly LyricSection[],
+  sectionId: string,
+): number {
+  const order = sections.findIndex((section) => section.id === sectionId);
+  for (let i = order + 1; i < sections.length; i += 1) {
+    const next = sections[i]!.id;
+    const at = lines.findIndex((line) => line.sectionId === next);
+    if (at >= 0) return at;
+  }
+  return lines.length;
+}
+
+/**
+ * Guess the structure of an unmarked lyric sheet.
+ *
+ * Not audio analysis — just the observation that the chorus is the bit that
+ * comes back. A run of consecutive lines appearing more than once in a lyric
+ * is almost always the hook, and everything between those runs is a verse.
+ *
+ * That is a narrow claim, and narrow is the point: it is right most of the
+ * time, wrong in obvious ways when it is wrong, and every heading it produces
+ * is text you can edit. It cannot find a bridge or an intro, because nothing
+ * about the words marks those out — only the music does.
+ */
+export function suggestSections(lineTexts: readonly string[]): string[] {
+  if (lineTexts.length < 4) return [...lineTexts];
+
+  const repeated = findRepeatedBlock(lineTexts);
+  const out: string[] = [];
+
+  if (!repeated) {
+    // Nothing repeats: call the whole thing one verse rather than inventing
+    // divisions that are not there.
+    out.push('[Verse 1]', ...lineTexts);
+    return out;
+  }
+
+  const { length, starts } = repeated;
+  const chorusAt = new Set(starts);
+  let verseNumber = 0;
+  let index = 0;
+  let inVerse = false;
+
+  while (index < lineTexts.length) {
+    if (chorusAt.has(index)) {
+      out.push('[Chorus]');
+      for (let i = 0; i < length; i += 1) out.push(lineTexts[index + i]!);
+      index += length;
+      inVerse = false;
+      continue;
+    }
+    if (!inVerse) {
+      verseNumber += 1;
+      out.push(`[Verse ${verseNumber}]`);
+      inVerse = true;
+    }
+    out.push(lineTexts[index]!);
+    index += 1;
+  }
+
+  return out;
+}
+
+/** The longest run of lines that occurs more than once, without overlaps. */
+function findRepeatedBlock(
+  lines: readonly string[],
+): { length: number; starts: number[] } | null {
+  const maxLength = Math.min(10, Math.floor(lines.length / 2));
+
+  for (let length = maxLength; length >= 2; length -= 1) {
+    const seen = new Map<string, number[]>();
+    for (let start = 0; start + length <= lines.length; start += 1) {
+      const key = lines.slice(start, start + length).join('\n');
+      const at = seen.get(key);
+      if (at) at.push(start);
+      else seen.set(key, [start]);
+    }
+
+    for (const [, starts] of seen) {
+      if (starts.length < 2) continue;
+      // Keep only non-overlapping occurrences.
+      const kept: number[] = [];
+      let lastEnd = -1;
+      for (const start of starts) {
+        if (start >= lastEnd) {
+          kept.push(start);
+          lastEnd = start + length;
+        }
+      }
+      if (kept.length >= 2) return { length, starts: kept };
+    }
+  }
+  return null;
 }
 
 /** Split pasted text into lines, dropping blank ones and section headers. */

@@ -335,3 +335,92 @@
 .control__checkbox--small:checked::after {
   transform: translate(0.75rem, -50%);
 }
+
+/* --- Sections ------------------------------------------------------------ */
+
+/*
+ * A heading between parts of the song. Colour-coded by kind so the shape of a
+ * track — verse, chorus, verse, chorus, bridge — is legible at a glance from
+ * the left edge alone.
+ */
+.lyrics__section {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: 0.2rem var(--space-2) 0.2rem 0.6rem;
+  border-left: 3px solid var(--ghost);
+}
+
+.lyrics__section:first-child {
+  margin-top: 0;
+}
+
+.lyrics__section-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.lyrics__section-repeat {
+  font-size: 0.6rem;
+  color: var(--ghost);
+  font-style: italic;
+}
+
+.lyrics__section.is-chorus {
+  border-left-color: var(--mint);
+}
+.lyrics__section.is-chorus .lyrics__section-label {
+  color: var(--mint);
+}
+
+.lyrics__section.is-verse {
+  border-left-color: var(--sky);
+}
+.lyrics__section.is-verse .lyrics__section-label {
+  color: var(--sky);
+}
+
+.lyrics__section.is-pre-chorus,
+.lyrics__section.is-post-chorus {
+  border-left-color: rgba(140, 190, 255, 0.5);
+}
+
+.lyrics__section.is-bridge {
+  border-left-color: var(--violet);
+}
+.lyrics__section.is-bridge .lyrics__section-label {
+  color: var(--violet);
+}
+
+.lyrics__section.is-intro,
+.lyrics__section.is-outro {
+  border-left-color: rgba(255, 184, 107, 0.6);
+}
+
+/* Clearing one line's timing, without touching the other fourteen. */
+.lyrics__clearline {
+  color: var(--ghost);
+  font-size: 0.7rem;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.lyrics__line:hover .lyrics__clearline,
+.lyrics__clearline:focus-visible {
+  opacity: 1;
+}
+
+.lyrics__clearline:hover {
+  color: var(--rose);
+}
+
+.lyrics__line {
+  grid-template-columns: 3.4rem minmax(0, 1.2fr) minmax(0, 1fr) 1.6rem 1.4rem;
+  cursor: pointer;
+}

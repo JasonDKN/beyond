@@ -3,11 +3,16 @@ import type { State, Store } from '@/core/store';
 import { saveTrack } from '@/storage/library';
 import {
   getSheet,
-  parseLyrics,
+  parseSheet,
   setSheet,
+  suggestSections,
   type LyricLine,
+  type LyricSection,
   type LyricSheet,
 } from '@/transcription/providers/lyrics';
+
+/** How far before a line to rewind when you ask to re-time it. */
+const LEAD_IN_SEC = 2.5;
 import { clear, el, formatClock } from './dom';
 
 /**
@@ -42,6 +47,7 @@ export class LyricsPanelView {
 
   /** Which line the next tap will time. */
   #cursor = 0;
+  #sections: readonly LyricSection[] = [];
   #audioKey = '';
   #open = true;
 
@@ -108,8 +114,18 @@ export class LyricsPanelView {
         this.#tapButton,
         el(
           'button',
+          {
+            class: 'lyrics__reset',
+            type: 'button',
+            title: 'Add [Verse] and [Chorus] headings by finding the lines that repeat',
+            onclick: () => this.#detectSections(),
+          },
+          'Detect sections',
+        ),
+        el(
+          'button',
           { class: 'lyrics__reset', type: 'button', onclick: () => this.#resetTimings() },
-          'Clear timings',
+          'Clear all timings',
         ),
         this.#summary,
         this.#buildButton,
@@ -167,6 +183,7 @@ export class LyricsPanelView {
 
     if (key && (key !== this.#audioKey || (externallyChanged && !focused))) {
       this.#audioKey = key;
+      this.#sections = sheet.sections ?? [];
       this.#textarea.value = sheetText;
       const firstUntimed = sheet.lines.findIndex((line) => line.startSec === null);
       this.#cursor = firstUntimed < 0 ? sheet.lines.length : firstUntimed;
@@ -181,12 +198,64 @@ export class LyricsPanelView {
 
   #onPaste(): void {
     const sheet = getSheet();
-    const lines = parseLyrics(this.#textarea.value, sheet);
+    const { lines, sections } = parseSheet(this.#textarea.value, sheet);
+    this.#sections = sections;
     this.#commit(lines);
     // Resume tapping at the first line that still needs a time.
     const firstUntimed = lines.findIndex((line) => line.startSec === null);
     this.#cursor = firstUntimed < 0 ? lines.length : firstUntimed;
     this.#renderLines();
+  }
+
+  /**
+   * Point the next tap at a particular line.
+   *
+   * Re-timing one line in the middle of a finished sheet used to mean holding
+   * the playhead in the right place and clicking a button at the exact moment
+   * — two things at once, badly. Arming separates them: say which line, then
+   * tap it with T like any other, as many times as it takes.
+   */
+  #arm(index: number, options: { rewind?: boolean } = {}): void {
+    this.#cursor = Math.max(0, Math.min(index, getSheet().lines.length - 1));
+    this.#updateSummary();
+
+    if (!options.rewind) return;
+
+    // Drop in a couple of seconds early so the line arrives at you, rather
+    // than starting exactly on it and needing to react to a sound already
+    // in progress.
+    const line = getSheet().lines[this.#cursor];
+    const anchor = line?.startSec ?? this.#previousTimed(this.#cursor) ?? 0;
+    this.#player.seek(Math.max(0, anchor - LEAD_IN_SEC));
+    void this.#player.play();
+  }
+
+  /** The most recent timed line before `index`, for a sensible rewind point. */
+  #previousTimed(index: number): number | null {
+    const lines = getSheet().lines;
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const at = lines[i]?.startSec;
+      if (at !== null && at !== undefined) return at;
+    }
+    return null;
+  }
+
+  /** Clear one line's timing, leaving every other line alone. */
+  #clearLine(index: number): void {
+    this.#commit(
+      getSheet().lines.map((line, i) => (i === index ? { ...line, startSec: null } : line)),
+    );
+    this.#cursor = index;
+    this.#renderLines();
+  }
+
+  /** Rewrite the textarea with detected section headings. */
+  #detectSections(): void {
+    const sheet = getSheet();
+    if (sheet.lines.length === 0) return;
+    const suggested = suggestSections(sheet.lines.map((line) => line.text));
+    this.#textarea.value = suggested.join('\n');
+    this.#onPaste();
   }
 
   /**
@@ -200,6 +269,7 @@ export class LyricsPanelView {
     const sheet: LyricSheet = {
       ...getSheet(),
       lines,
+      sections: this.#sections,
       audioKey: this.#audioKey,
       language: state.inputLanguage === 'auto' ? 'ko' : state.inputLanguage,
     };
@@ -236,7 +306,27 @@ export class LyricsPanelView {
     clear(this.#list);
     this.#rowNodes = [];
 
+    let lastSection: string | undefined;
+
     sheet.lines.forEach((line, index) => {
+      // A heading whenever the section changes, so verse and chorus are
+      // visually separated rather than one undifferentiated wall of lines.
+      if (line.sectionId && line.sectionId !== lastSection) {
+        const section = this.#sections.find((entry) => entry.id === line.sectionId);
+        if (section) {
+          this.#list.appendChild(
+            el(
+              'li',
+              { class: `lyrics__section is-${section.kind}` },
+              el('span', { class: 'lyrics__section-label' }, section.label),
+              section.repeatOf
+                ? el('span', { class: 'lyrics__section-repeat' }, 'repeat — words copied')
+                : null,
+            ),
+          );
+        }
+        lastSection = line.sectionId;
+      }
       const time = el(
         'button',
         {
@@ -274,7 +364,15 @@ export class LyricsPanelView {
 
       const row = el(
         'li',
-        { class: `lyrics__line${line.startSec === null ? ' is-untimed' : ''}` },
+        {
+          class: `lyrics__line${line.startSec === null ? ' is-untimed' : ''}`,
+          // Clicking anywhere on the row aims the next tap at it, without
+          // moving the playhead — for when you already know where you are.
+          onclick: (event: Event) => {
+            if ((event.target as HTMLElement).closest('button, input')) return;
+            this.#arm(index);
+          },
+        },
         time,
         el('span', { class: 'lyrics__text' }, line.text),
         translation,
@@ -283,13 +381,20 @@ export class LyricsPanelView {
           {
             class: 'lyrics__retap',
             type: 'button',
-            title: 'Re-time this line at the playhead',
-            onclick: () => {
-              this.#cursor = index;
-              this.tap();
-            },
+            title: 'Play into this line, then press T to re-time it',
+            onclick: () => this.#arm(index, { rewind: true }),
           },
           '⟲',
+        ),
+        el(
+          'button',
+          {
+            class: 'lyrics__clearline',
+            type: 'button',
+            title: "Clear just this line's timing",
+            onclick: () => this.#clearLine(index),
+          },
+          '✕',
         ),
       );
 
@@ -358,13 +463,44 @@ export class LyricsPanelView {
     this.#rowNodes.forEach((row, index) => row.classList.toggle('is-playing', index === active));
   }
 
+  /**
+   * Keyboard, so a re-time never needs the mouse.
+   *
+   * Arrow keys move which line is armed, T times it, Backspace clears it.
+   * Fixing line 7 of 15 becomes: arrow to it, press T when it comes round.
+   */
   #bindKeys(): void {
     window.addEventListener('keydown', (event) => {
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return;
-      if (event.key !== 't' && event.key !== 'T') return;
+      if (this.#store.state.mode !== 'annotation') return;
+      const total = getSheet().lines.length;
+      if (total === 0) return;
+
+      switch (event.key) {
+        case 't':
+        case 'T':
+          this.tap();
+          break;
+        case 'ArrowUp':
+          this.#arm(this.#cursor - 1);
+          break;
+        case 'ArrowDown':
+          this.#arm(this.#cursor + 1);
+          break;
+        case 'Backspace':
+        case 'Delete':
+          this.#clearLine(this.#cursor);
+          break;
+        case 'r':
+        case 'R':
+          // Rewind into the armed line, ready to tap it.
+          this.#arm(this.#cursor, { rewind: true });
+          break;
+        default:
+          return;
+      }
       event.preventDefault();
-      this.tap();
     });
   }
 }
