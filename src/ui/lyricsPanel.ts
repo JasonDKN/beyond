@@ -2,11 +2,10 @@ import type { Player } from '@/audio/player';
 import type { State, Store } from '@/core/store';
 import { saveTrack } from '@/storage/library';
 import {
+  countMarkerLines,
   getSheet,
-  parseSheet,
+  parseLyrics,
   setSheet,
-  sheetToText,
-  suggestSections,
   type LyricLine,
   type LyricSection,
   type LyricSheet,
@@ -51,6 +50,10 @@ export class LyricsPanelView {
   #sections: readonly LyricSection[] = [];
   #audioKey = '';
   #open = true;
+  /** The text this panel last turned into lines, for spotting outside edits. */
+  #parsedText = '';
+  /** Bracketed markers in the last paste — kept out of the lyrics, but reported. */
+  #markersDropped = 0;
 
   constructor(store: Store, player: Player, callbacks: LyricsPanelCallbacks) {
     this.#store = store;
@@ -62,7 +65,7 @@ export class LyricsPanelView {
       rows: '8',
       spellcheck: 'false',
       placeholder:
-        '가사를 여기에 붙여넣으세요 — paste the lyrics here, one line per line.\n\nSection markers like [Verse 1] are ignored.',
+        '가사를 여기에 붙여넣으세요 — paste the lyrics here, one line per line.\n\nSections are made by hand in Compartmentalize.',
       oninput: () => this.#onPaste(),
     }) as HTMLTextAreaElement;
 
@@ -115,16 +118,6 @@ export class LyricsPanelView {
         this.#tapButton,
         el(
           'button',
-          {
-            class: 'lyrics__reset',
-            type: 'button',
-            title: 'Add [Verse] and [Chorus] headings by finding the lines that repeat',
-            onclick: () => this.#detectSections(),
-          },
-          'Detect sections',
-        ),
-        el(
-          'button',
           { class: 'lyrics__reset', type: 'button', onclick: () => this.#resetTimings() },
           'Clear all timings',
         ),
@@ -171,28 +164,33 @@ export class LyricsPanelView {
 
     const key = state.trackId ?? '';
     const sheet = getSheet();
-    // Compared against the sheet written back out *with* its headings. Using
-    // the bare line texts here meant a sheet with sections never matched the
-    // box, so this branch fired on every state change and quietly replaced
-    // what you typed with a headingless copy — taking the sections with it.
-    const sheetText = sheetToText(sheet);
+    const sheetText = sheet.lines.map((line) => line.text).join('\n');
 
     // Resync on a new track *or* whenever the sheet has been replaced beneath
     // us — opening a project file for the song already loaded changes the
     // sheet without changing the track, and keying only on the track id left
     // the panel showing the old text while the score showed the new.
     //
-    // Never while you are typing in the box, which would fight the edit.
-    const externallyChanged = sheetText !== this.#textarea.value;
+    // The comparison is against what this panel last *parsed*, not against the
+    // sheet's line texts. Those two differ for perfectly ordinary reasons —
+    // blank lines, a stray bracketed marker, trailing spaces — and treating
+    // any difference as "someone else changed the sheet" is what used to make
+    // the box quietly overwrite itself while you were working in it.
+    const externallyChanged = sheetText !== this.#parsedText;
     const focused = document.activeElement === this.#textarea;
 
     if (key && (key !== this.#audioKey || (externallyChanged && !focused))) {
       this.#audioKey = key;
       this.#sections = sheet.sections ?? [];
       this.#textarea.value = sheetText;
+      this.#parsedText = sheetText;
       const firstUntimed = sheet.lines.findIndex((line) => line.startSec === null);
       this.#cursor = firstUntimed < 0 ? sheet.lines.length : firstUntimed;
       this.#renderLines();
+    } else if (key === this.#audioKey) {
+      // Sections and artists are edited in Compartmentalize; the sheet here
+      // has to notice when they change without touching the text box.
+      this.#sections = sheet.sections ?? [];
     }
 
     this.#tapButton.disabled = getSheet().lines.length === 0;
@@ -203,8 +201,10 @@ export class LyricsPanelView {
 
   #onPaste(): void {
     const sheet = getSheet();
-    const { lines, sections } = parseSheet(this.#textarea.value, sheet);
-    this.#sections = sections;
+    const lines = parseLyrics(this.#textarea.value, sheet);
+    this.#sections = sheet.sections ?? [];
+    this.#parsedText = lines.map((line) => line.text).join('\n');
+    this.#markersDropped = countMarkerLines(this.#textarea.value);
     this.#commit(lines);
     // Resume tapping at the first line that still needs a time.
     const firstUntimed = lines.findIndex((line) => line.startSec === null);
@@ -252,15 +252,6 @@ export class LyricsPanelView {
     );
     this.#cursor = index;
     this.#renderLines();
-  }
-
-  /** Rewrite the textarea with detected section headings. */
-  #detectSections(): void {
-    const sheet = getSheet();
-    if (sheet.lines.length === 0) return;
-    const suggested = suggestSections(sheet.lines.map((line) => line.text));
-    this.#textarea.value = suggested.join('\n');
-    this.#onPaste();
   }
 
   /**
@@ -324,8 +315,12 @@ export class LyricsPanelView {
               'li',
               { class: `lyrics__section is-${section.kind}` },
               el('span', { class: 'lyrics__section-label' }, section.label),
-              section.repeatOf
-                ? el('span', { class: 'lyrics__section-repeat' }, 'repeat — words copied')
+              section.occurrences.length > 1
+                ? el(
+                    'span',
+                    { class: 'lyrics__section-repeat' },
+                    `plays ${section.occurrences.length}×`,
+                  )
                 : null,
             ),
           );
@@ -437,7 +432,14 @@ export class LyricsPanelView {
       this.#buildButton.disabled = true;
       return;
     }
-    this.#summary.textContent = `${timed} of ${total} lines timed`;
+    // A pasted sheet full of [Verse 1] markers should not silently shed them.
+    // They are not lyrics, so they are not sung — but saying nothing looks
+    // like lines went missing.
+    const dropped =
+      this.#markersDropped > 0
+        ? ` · ${this.#markersDropped} bracketed marker${this.#markersDropped === 1 ? '' : 's'} skipped — build sections in Compartmentalize`
+        : '';
+    this.#summary.textContent = `${timed} of ${total} lines timed${dropped}`;
     this.#buildButton.disabled = timed === 0;
   }
 

@@ -1,0 +1,507 @@
+/*
+ * Compartmentalize: the lines on the left, the shape of the song on the right.
+ *
+ * Sorting a hundred lines into six parts is a dragging job, so the two columns
+ * are always both on screen — a drop target you have to scroll to find is a
+ * drop target you will not use.
+ */
+
+.compart {
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(22rem, 30rem);
+  gap: var(--space-5);
+  min-height: 0;
+  padding-bottom: var(--space-4);
+}
+
+.compart.is-hidden {
+  display: none;
+}
+
+/* Compartmentalize replaces the score column and keeps the waveform. */
+body.mode-compartmentalize .stage__score,
+body.mode-compartmentalize .grid,
+body.mode-compartmentalize .practice {
+  display: none;
+}
+
+body.mode-compartmentalize .controls__layers,
+body.mode-compartmentalize .control--notation,
+body.mode-compartmentalize .control--export,
+body.mode-compartmentalize .control--toggle {
+  display: none;
+}
+
+body:not(.mode-compartmentalize) .compart {
+  display: none;
+}
+
+/*
+ * The waveform stays — you set occurrence boundaries against it — but sorting
+ * lines is a list job, and the lists are what needs the height.
+ */
+body.mode-compartmentalize .staff__frame {
+  height: clamp(80px, 11vh, 120px);
+}
+
+body.mode-compartmentalize .transport {
+  margin-top: var(--space-2);
+}
+
+.compart__col {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
+  gap: var(--space-2);
+}
+
+.compart__col--panel {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow-y: auto;
+  padding-right: var(--space-2);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 168, 232, 0.3) transparent;
+}
+
+.compart__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.compart__head--sections {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: var(--border-soft);
+}
+
+.compart__title {
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  font-weight: 300;
+}
+
+.compart__summary,
+.compart__hint {
+  font-size: var(--step--1);
+  color: var(--ghost);
+  margin: 0;
+}
+
+.compart__hint kbd {
+  padding: 0 0.3rem;
+  border-radius: 3px;
+  border: var(--border-firm);
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+}
+
+.compart__empty {
+  font-size: var(--step--1);
+  color: var(--ghost);
+  line-height: 1.5;
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(140, 168, 232, 0.24);
+}
+
+.compart__empty--tight {
+  padding: var(--space-2);
+  border: none;
+}
+
+.compart__add {
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: 1px dashed rgba(140, 168, 232, 0.4);
+  font-size: var(--step--1);
+  color: var(--paper-dim);
+}
+
+.compart__add:hover {
+  color: var(--paper);
+  border-color: rgba(124, 245, 213, 0.5);
+  border-style: solid;
+}
+
+.compart__remove {
+  color: var(--ghost);
+  font-size: 0.72rem;
+  padding: 0 0.25rem;
+}
+
+.compart__remove:hover {
+  color: var(--rose);
+}
+
+/* --- The lines ------------------------------------------------------------ */
+
+.compart__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 168, 232, 0.3) transparent;
+}
+
+.compart__line {
+  display: grid;
+  grid-template-columns: 3.2rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.3rem var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  cursor: grab;
+  user-select: none;
+  /* Let a vertical swipe scroll the list; a sideways drag is the gesture that
+     carries a line into a section. */
+  touch-action: pan-y;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.compart__line:hover {
+  background: rgba(30, 38, 70, 0.5);
+}
+
+.compart__line.is-selected {
+  background: rgba(124, 245, 213, 0.12);
+  border-color: rgba(124, 245, 213, 0.45);
+}
+
+.compart__line:active {
+  cursor: grabbing;
+}
+
+.compart__line-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.68rem;
+  color: var(--sky);
+  text-align: right;
+}
+
+.compart__line.is-untimed .compart__line-time {
+  color: var(--ghost);
+}
+
+.compart__line-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compart__line-tag {
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-pill);
+  background: rgba(140, 168, 232, 0.14);
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compart__line-tag.is-empty {
+  background: none;
+  color: rgba(140, 168, 232, 0.35);
+}
+
+/* Somewhere to drop a line back out of every section. */
+.compart__unassign {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(140, 168, 232, 0.2);
+  font-size: var(--step--1);
+  color: var(--ghost);
+  text-align: center;
+}
+
+.compart__unassign.is-armed {
+  border-color: rgba(140, 168, 232, 0.45);
+  color: var(--paper-dim);
+}
+
+.is-drop-target {
+  border-color: var(--mint) !important;
+  background: rgba(124, 245, 213, 0.1);
+}
+
+/*
+ * What you are carrying, while you carry it.
+ *
+ * Positioned from the top-left corner by transform, so following the pointer
+ * costs one compositor property and never triggers layout.
+ */
+.compart__ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  pointer-events: none;
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--mint);
+  background: rgba(12, 16, 34, 0.95);
+  color: var(--mint);
+  font-size: 0.68rem;
+  box-shadow: var(--shadow-lift);
+}
+
+body.is-dragging-lines {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* --- Artists -------------------------------------------------------------- */
+
+.compart__artists {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.compart__artist {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.compart__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--artist-colour, var(--ghost));
+}
+
+.compart__artist-name,
+.compart__label,
+.compart__time {
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-soft);
+  background: rgba(6, 8, 20, 0.5);
+  color: var(--paper);
+  font-family: inherit;
+  font-size: var(--step--1);
+  min-width: 0;
+}
+
+.compart__artist-name:focus,
+.compart__label:focus,
+.compart__time:focus {
+  outline: none;
+  border-color: rgba(124, 245, 213, 0.5);
+}
+
+.compart__artist-pick {
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-soft);
+  background: rgba(6, 8, 20, 0.5);
+  color: var(--paper-dim);
+  font-family: inherit;
+  font-size: 0.66rem;
+  max-width: 9rem;
+}
+
+/*
+ * Each artist gets a colour, so a verse that trades lines reads as a pattern
+ * rather than as a column of names you have to actually read.
+ */
+.is-artist-0 {
+  --artist-colour: #7cf5d5;
+}
+.is-artist-1 {
+  --artist-colour: #8cbeff;
+}
+.is-artist-2 {
+  --artist-colour: #c9a7ff;
+}
+.is-artist-3 {
+  --artist-colour: #ffb86b;
+}
+.is-artist-4 {
+  --artist-colour: #ff8fa8;
+}
+.is-artist-5 {
+  --artist-colour: #9ee37d;
+}
+
+.compart__artist-pick[class*='is-artist-']:not(.is-artist--1) {
+  color: var(--artist-colour, var(--paper-dim));
+  border-color: color-mix(in srgb, var(--artist-colour, transparent) 45%, transparent);
+}
+
+/* --- Sections ------------------------------------------------------------- */
+
+.compart__sections {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+
+.compart__section {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: var(--border-soft);
+  border-left: 3px solid var(--ghost);
+  background: rgba(12, 16, 34, 0.6);
+}
+
+.compart__section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.compart__kind {
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-soft);
+  background: rgba(6, 8, 20, 0.5);
+  color: var(--paper-dim);
+  font-family: inherit;
+  font-size: 0.66rem;
+}
+
+.compart__section-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The section-wide picker names what it does, so it needs room to say it. */
+.compart__section-meta .compart__artist-pick {
+  max-width: 12rem;
+}
+
+.compart__count {
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  color: var(--ghost);
+}
+
+.compart__occurrences {
+  display: grid;
+  gap: 3px;
+}
+
+.compart__occ {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compart__occ-tag {
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ghost);
+  min-width: 3.4rem;
+}
+
+.compart__occ.is-reference .compart__occ-tag {
+  color: var(--mint);
+}
+
+.compart__time {
+  width: 4.2rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.compart__occ-dash {
+  color: var(--ghost);
+}
+
+.compart__grab,
+.compart__occ-play {
+  font-size: 0.7rem;
+  color: var(--ghost);
+  padding: 0 0.2rem;
+}
+
+.compart__grab:hover,
+.compart__occ-play:hover {
+  color: var(--mint);
+}
+
+.compart__section-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.compart__occ-add,
+.compart__assign {
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  font-size: 0.66rem;
+  color: var(--paper-dim);
+}
+
+.compart__occ-add:hover {
+  color: var(--paper);
+  border-color: rgba(124, 245, 213, 0.45);
+}
+
+.compart__assign {
+  border-color: var(--mint);
+  color: var(--mint);
+}
+
+/* Section colours, matching the strip under the waveform. */
+.compart__section.is-chorus,
+.compart__line.is-chorus {
+  border-left-color: var(--mint);
+}
+.compart__section.is-verse,
+.compart__line.is-verse {
+  border-left-color: var(--sky);
+}
+.compart__section.is-bridge,
+.compart__line.is-bridge {
+  border-left-color: var(--violet);
+}
+.compart__section.is-pre-chorus,
+.compart__line.is-pre-chorus,
+.compart__section.is-post-chorus,
+.compart__line.is-post-chorus {
+  border-left-color: rgba(140, 190, 255, 0.55);
+}
+.compart__section.is-intro,
+.compart__line.is-intro,
+.compart__section.is-outro,
+.compart__line.is-outro {
+  border-left-color: rgba(255, 184, 107, 0.6);
+}
+.compart__section.is-refrain,
+.compart__line.is-refrain {
+  border-left-color: rgba(201, 167, 255, 0.5);
+}
+
+@media (max-width: 1100px) {
+  .compart {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+}

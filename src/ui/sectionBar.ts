@@ -48,7 +48,11 @@ export class SectionBarView {
     // Rebuild only when the structure actually changes; this runs on every
     // animation frame during playback.
     const signature = spans
-      .map((span) => `${span.section.id}:${span.startSec.toFixed(2)}:${span.endSec.toFixed(2)}`)
+      .map(
+        (span) =>
+          `${span.section.id}:${span.section.label}:${span.section.kind}:` +
+          `${span.startSec.toFixed(2)}:${span.endSec.toFixed(2)}`,
+      )
       .join('|');
     if (signature !== this.#signature) {
       this.#signature = signature;
@@ -79,8 +83,13 @@ export class SectionBarView {
           type: 'button',
           style: `left: ${left.toFixed(3)}%; width: calc(${width.toFixed(3)}% - 2px)`,
           title:
-            `${span.section.label} — ${formatClock(span.startSec)} to ${formatClock(span.endSec)}\n` +
-            `Click to play from here · Shift-click to loop this section` +
+            `${span.section.label} — ${formatClock(span.startSec)} to ${formatClock(span.endSec)}` +
+            (span.occurrenceIndex > 0
+              ? `\nRepeat ${span.occurrenceIndex + 1} of ${span.section.occurrences.length}`
+              : span.section.occurrences.length > 1
+                ? `\nPlays ${span.section.occurrences.length}× — this is the one you tapped`
+                : '') +
+            `\nClick to play from here · Shift-click to loop this section` +
             (untimed ? `\n${span.lineCount - span.timedCount} line(s) still untimed` : ''),
           onclick: (event: Event) => {
             // Shift turns a jump into a loop, which is how you drill one part
@@ -93,7 +102,7 @@ export class SectionBarView {
           },
         },
         el('span', { class: 'sections__label' }, span.section.label),
-        span.section.repeatOf ? el('span', { class: 'sections__repeat' }, '↺') : null,
+        span.occurrenceIndex > 0 ? el('span', { class: 'sections__repeat' }, '↺') : null,
       );
 
       if (untimed) block.classList.add('is-partial');

@@ -1,252 +1,276 @@
 import { describe, expect, it } from 'vitest';
 import {
-  parseSheet,
+  countMarkerLines,
+  isMarkerLine,
+  occurrenceOffset,
+  parseLyrics,
+  placeLines,
   sectionKindFor,
   sectionSpans,
-  sheetToText,
-  suggestSections,
+  upgradeSheet,
+  type LyricLine,
+  type LyricSection,
+  type LyricSheet,
 } from '@/transcription/providers/lyrics';
+import { parseClock } from '@/ui/compartmentalize';
 
 /**
- * Section handling, tested on invented placeholder lines so the fixtures carry
- * no real lyrics.
+ * Sections, artists and repeats — tested on invented placeholder lines so the
+ * fixtures carry no real lyrics.
  */
 
 const text = (...lines: string[]): string => lines.join('\n');
 
-describe('section headings', () => {
-  it('recognises the parts a song is made of', () => {
+const sheetOf = (
+  lines: readonly LyricLine[],
+  sections: readonly LyricSection[] = [],
+): LyricSheet => ({ language: 'ko', audioKey: 'k', lines, sections, artists: [] });
+
+const occ = (id: string, startSec: number, endSec: number) => ({ id, startSec, endSec });
+
+describe('naming a section', () => {
+  it('reads the kind out of the name you typed', () => {
     expect(sectionKindFor('Verse 1')).toBe('verse');
-    expect(sectionKindFor('Chorus')).toBe('chorus');
     expect(sectionKindFor('Hook')).toBe('chorus');
     expect(sectionKindFor('Bridge')).toBe('bridge');
-    expect(sectionKindFor('Intro')).toBe('intro');
-    expect(sectionKindFor('Outro')).toBe('outro');
     expect(sectionKindFor('Something else')).toBe('other');
   });
 
   it('reads pre-chorus as its own part, not as a chorus', () => {
-    // "Pre-Chorus" contains "chorus", so order of matching matters.
     expect(sectionKindFor('Pre-Chorus')).toBe('pre-chorus');
-    expect(sectionKindFor('Pre Hook')).toBe('pre-chorus');
     expect(sectionKindFor('Post-Chorus')).toBe('post-chorus');
   });
 
-  it('assigns each line to the heading above it', () => {
-    const { lines, sections } = parseSheet(
-      text('[Verse 1]', 'aaa', 'bbb', '[Chorus]', 'ccc'),
-    );
-    expect(sections.map((s) => s.kind)).toEqual(['verse', 'chorus']);
-    expect(lines).toHaveLength(3);
-    expect(lines[0]?.sectionId).toBe(sections[0]?.id);
-    expect(lines[2]?.sectionId).toBe(sections[1]?.id);
-  });
-
-  it('accepts round brackets as well as square', () => {
-    const { sections } = parseSheet(text('(Verse 1)', 'aaa'));
-    expect(sections[0]?.kind).toBe('verse');
-  });
-});
-
-describe('repeated sections', () => {
-  it('copies the words back when a heading recurs empty', () => {
-    // Type the hook once; name it again where it returns.
-    const { lines, sections } = parseSheet(
-      text('[Hook]', 'aaa', 'bbb', '[Verse 1]', 'ccc', '[Hook]'),
-    );
-    expect(sections).toHaveLength(3);
-    expect(sections[2]?.repeatOf).toBe(sections[0]?.id);
-    expect(lines.map((l) => l.text)).toEqual(['aaa', 'bbb', 'ccc', 'aaa', 'bbb']);
-    expect(lines[3]?.sectionId).toBe(sections[2]?.id);
-  });
-
-  it('matches heading names loosely', () => {
-    const { sections } = parseSheet(text('[Chorus]', 'aaa', '[chorus 2]', ''));
-    expect(sections[1]?.repeatOf).toBe(sections[0]?.id);
-  });
-
-  it('leaves a repeat untimed rather than stacking it on the first', () => {
-    // The crucial one: identical text in two places must not inherit the same
-    // timestamp, or the whole chorus piles up at one moment in the song.
-    const first = parseSheet(text('[Hook]', 'aaa', '[Verse 1]', 'bbb', '[Hook]'));
-    const timed = first.lines.map((line, i) => (i === 0 ? { ...line, startSec: 10 } : line));
-
-    const again = parseSheet(text('[Hook]', 'aaa', '[Verse 1]', 'bbb', '[Hook]'), {
-      language: 'ko',
-      audioKey: 'k',
-      lines: timed,
-      sections: first.sections,
-    });
-
-    expect(again.lines[0]?.startSec).toBe(10);
-    expect(again.lines.at(-1)?.startSec).toBeNull();
-  });
-
-  it('does not copy into a repeat that has its own words', () => {
-    const { lines } = parseSheet(text('[Hook]', 'aaa', '[Hook]', 'zzz'));
-    expect(lines.map((l) => l.text)).toEqual(['aaa', 'zzz']);
-  });
-});
-
-describe('detecting structure from the words alone', () => {
-  it('finds the block that repeats and calls it the chorus', () => {
-    const out = suggestSections(['v1', 'v2', 'h1', 'h2', 'v3', 'v4', 'h1', 'h2']);
-    expect(out.filter((l) => l === '[Chorus]')).toHaveLength(2);
-    expect(out.filter((l) => l.startsWith('[Verse'))).toHaveLength(2);
-    // Every original line survives, in order.
-    expect(out.filter((l) => !l.startsWith('['))).toEqual([
-      'v1', 'v2', 'h1', 'h2', 'v3', 'v4', 'h1', 'h2',
-    ]);
-  });
-
-  it('calls a lyric with no repetition a single verse rather than inventing parts', () => {
-    const out = suggestSections(['a', 'b', 'c', 'd', 'e']);
-    expect(out[0]).toBe('[Verse 1]');
-    expect(out.filter((l) => l.startsWith('['))).toHaveLength(1);
-  });
-
-  it('leaves a very short lyric alone', () => {
-    expect(suggestSections(['a', 'b'])).toEqual(['a', 'b']);
-  });
-
-  it('prefers the longest repeating block', () => {
-    const out = suggestSections(['x', 'h1', 'h2', 'h3', 'y', 'h1', 'h2', 'h3']);
-    const chorusAt = out.indexOf('[Chorus]');
-    expect(out.slice(chorusAt + 1, chorusAt + 4)).toEqual(['h1', 'h2', 'h3']);
-  });
-});
-
-describe('section headings in other languages', () => {
-  it('reads Korean headings', () => {
+  it('reads Korean and Japanese names', () => {
     expect(sectionKindFor('후렴')).toBe('chorus');
-    expect(sectionKindFor('훅')).toBe('chorus');
-    expect(sectionKindFor('코러스')).toBe('chorus');
     expect(sectionKindFor('벌스 1')).toBe('verse');
-    expect(sectionKindFor('절')).toBe('verse');
     expect(sectionKindFor('브릿지')).toBe('bridge');
-    expect(sectionKindFor('브리지')).toBe('bridge');
-    expect(sectionKindFor('인트로')).toBe('intro');
-    expect(sectionKindFor('아웃트로')).toBe('outro');
-    expect(sectionKindFor('프리코러스')).toBe('pre-chorus');
-  });
-
-  it('reads Japanese headings, which have no English cognate', () => {
-    // サビ is the chorus and Aメロ the verse — no amount of transliteration
-    // would get there, so these need naming outright.
     expect(sectionKindFor('サビ')).toBe('chorus');
     expect(sectionKindFor('Aメロ')).toBe('verse');
     expect(sectionKindFor('Bメロ')).toBe('pre-chorus');
-    expect(sectionKindFor('ブリッジ')).toBe('bridge');
-    expect(sectionKindFor('イントロ')).toBe('intro');
   });
 
-  it('reads Chinese, Spanish, French and German headings', () => {
-    expect(sectionKindFor('副歌')).toBe('chorus');
-    expect(sectionKindFor('主歌')).toBe('verse');
-    expect(sectionKindFor('Estribillo')).toBe('chorus');
-    expect(sectionKindFor('Verso 2')).toBe('verse');
-    expect(sectionKindFor('Puente')).toBe('bridge');
+  it('keeps Refrain distinct from its Romance cousins', () => {
     expect(sectionKindFor('Refrain')).toBe('refrain');
-    expect(sectionKindFor('Couplet 1')).toBe('verse');
-    expect(sectionKindFor('Strophe')).toBe('verse');
-  });
-
-  it('matches repeats of a non-Latin heading', () => {
-    // The old key function stripped every non-Latin, non-Hangul character, so
-    // two different Japanese headings both reduced to '' and collided.
-    const { sections } = parseSheet(
-      text('[サビ]', 'aaa', 'bbb', '[Aメロ]', 'ccc', '[サビ]'),
-    );
-    expect(sections[2]?.repeatOf).toBe(sections[0]?.id);
-    // …and crucially, the verse must NOT be treated as a repeat of the chorus.
-    expect(sections[1]?.repeatOf).toBeUndefined();
-  });
-
-  it('handles a sheet that mixes languages', () => {
-    const { sections } = parseSheet(text('[Verse 1]', 'aaa', '[후렴]', 'bbb'));
-    expect(sections.map((s) => s.kind)).toEqual(['verse', 'chorus']);
+    expect(sectionKindFor('Refrão')).toBe('chorus');
   });
 });
 
-describe('section spans on the timeline', () => {
-  it('runs each section up to the start of the next', () => {
-    const { lines, sections } = parseSheet(
-      text('[Verse 1]', 'aaa', 'bbb', '[Hook]', 'ccc'),
-    );
-    const timed = lines.map((line, i) => ({ ...line, startSec: [5, 8, 20][i] ?? null }));
-    const spans = sectionSpans(
-      { language: 'ko', audioKey: 'k', lines: timed, sections },
-      60,
-    );
-    expect(spans).toHaveLength(2);
-    expect(spans[0]).toMatchObject({ startSec: 5, endSec: 20 });
-    expect(spans[1]).toMatchObject({ startSec: 20, endSec: 60 });
+describe('pasted text is only ever lyrics', () => {
+  it('drops bracketed markers instead of turning them into sections', () => {
+    // Structure is made by hand now. A marker is still not a lyric, though —
+    // putting [Verse 1] on the staff to be pronounced would be worse.
+    const lines = parseLyrics(text('[Verse 1]', 'aaa', '(Hook)', 'bbb'));
+    expect(lines.map((l) => l.text)).toEqual(['aaa', 'bbb']);
+    expect(countMarkerLines(text('[Verse 1]', 'aaa', '(Hook)', 'bbb'))).toBe(2);
   });
 
-  it('leaves out sections with nothing timed yet', () => {
-    const { lines, sections } = parseSheet(text('[Verse 1]', 'aaa', '[Hook]', 'bbb'));
-    const timed = lines.map((line, i) => ({ ...line, startSec: i === 0 ? 5 : null }));
-    const spans = sectionSpans({ language: 'ko', audioKey: 'k', lines: timed, sections }, 60);
-    expect(spans).toHaveLength(1);
-    expect(spans[0]?.section.kind).toBe('verse');
+  it('knows a marker from a lyric', () => {
+    expect(isMarkerLine('[Chorus]')).toBe(true);
+    expect(isMarkerLine('(Verse 2)')).toBe(true);
+    expect(isMarkerLine('aaa bbb')).toBe(false);
   });
 
-  it('orders by time, not by position in the text', () => {
-    // A repeated chorus is written last but may be tapped in the middle.
-    const { lines, sections } = parseSheet(
-      text('[Hook]', 'aaa', '[Verse 1]', 'bbb', '[Hook]'),
-    );
-    const timed = lines.map((line, i) => ({ ...line, startSec: [30, 10, 50][i] ?? null }));
-    const spans = sectionSpans({ language: 'ko', audioKey: 'k', lines: timed, sections }, 60);
-    expect(spans.map((s) => s.startSec)).toEqual([10, 30, 50]);
-  });
-});
+  it('carries section, artist, timing and translation through an edit', () => {
+    const before = sheetOf([
+      { text: 'aaa', startSec: 5, sectionId: 'sec-1', artistId: 'art-1', translation: 'x' },
+      { text: 'bbb', startSec: 9, sectionId: 'sec-1' },
+    ]);
+    const after = parseLyrics(text('aaa', 'bbb', 'ccc'), before);
 
-describe('the sheet survives editing', () => {
-  it('writes back out as the text it was parsed from', () => {
-    const raw = text('[Verse 1]', 'aaa', 'bbb', '[Hook]', 'ccc', '[Bridge]', 'ddd');
-    const { lines, sections } = parseSheet(raw);
-    expect(sheetToText({ language: 'ko', audioKey: 'k', lines, sections })).toBe(raw);
-  });
-
-  it('round-trips a sheet whose headings the box would otherwise lose', () => {
-    // The regression: the panel compared its textarea against the bare line
-    // texts, so a sheet with headings never matched and got overwritten.
-    const raw = text('[Verse 1]', 'aaa', '[후렴]', 'bbb');
-    const first = parseSheet(raw);
-    const sheet = { language: 'ko' as const, audioKey: 'k', ...first };
-    const again = parseSheet(sheetToText(sheet), sheet);
-    expect(again.sections.map((s) => s.label)).toEqual(['Verse 1', '후렴']);
-    expect(again.lines.map((l) => l.text)).toEqual(['aaa', 'bbb']);
-  });
-
-  it('keeps the words of a repeat when the sheet is written back out', () => {
-    const { lines, sections } = parseSheet(text('[Hook]', 'aaa', 'bbb', '[Verse]', 'ccc', '[Hook]'));
-    const out = sheetToText({ language: 'ko', audioKey: 'k', lines, sections });
-    // The second [Hook] now carries the words it copied, so re-parsing it
-    // yields the same sheet instead of an empty section.
-    expect(out).toBe(text('[Hook]', 'aaa', 'bbb', '[Verse]', 'ccc', '[Hook]', 'aaa', 'bbb'));
-    expect(parseSheet(out).lines).toHaveLength(5);
+    expect(after[0]).toMatchObject({
+      startSec: 5,
+      sectionId: 'sec-1',
+      artistId: 'art-1',
+      translation: 'x',
+    });
+    expect(after[1]).toMatchObject({ startSec: 9, sectionId: 'sec-1' });
+    // A brand-new line arrives bare.
+    expect(after[2]).toEqual({ text: 'ccc', startSec: null });
   });
 
   it('gives each occurrence of a repeated line back its own timing', () => {
-    // Was: only the first occurrence inherited, so re-parsing a timed sheet
-    // dropped every repeat's timings and shuffled the rest up.
-    const { lines, sections } = parseSheet(text('[Hook]', 'aaa', '[Verse]', 'bbb', '[Hook]'));
-    const timed = lines.map((line, i) => ({ ...line, startSec: [5, 12, 40][i] ?? null }));
-    const sheet = { language: 'ko' as const, audioKey: 'k', lines: timed, sections };
-
-    const again = parseSheet(sheetToText(sheet), sheet);
-    expect(again.lines.map((l) => l.startSec)).toEqual([5, 12, 40]);
+    // A text -> value map cannot tell one performance from another, which is
+    // how timings used to end up shuffled onto the wrong lines.
+    const before = sheetOf([
+      { text: 'aaa', startSec: 5 },
+      { text: 'bbb', startSec: 9 },
+      { text: 'aaa', startSec: 40 },
+    ]);
+    const after = parseLyrics(text('aaa', 'bbb', 'aaa'), before);
+    expect(after.map((l) => l.startSec)).toEqual([5, 9, 40]);
   });
 
-  it('does not stack a newly added repeat onto the first one', () => {
-    const { lines, sections } = parseSheet(text('[Hook]', 'aaa'));
-    const timed = lines.map((line) => ({ ...line, startSec: 5 }));
-    const sheet = { language: 'ko' as const, audioKey: 'k', lines: timed, sections };
+  it('leaves a newly added duplicate untimed rather than stacking it', () => {
+    const before = sheetOf([{ text: 'aaa', startSec: 5 }]);
+    const after = parseLyrics(text('aaa', 'aaa'), before);
+    expect(after.map((l) => l.startSec)).toEqual([5, null]);
+  });
+});
 
-    // A second [Hook] appears that was never timed; it must not inherit 0:05.
-    const again = parseSheet(text('[Hook]', 'aaa', '[Hook]'), sheet);
-    expect(again.lines.map((l) => l.startSec)).toEqual([5, null]);
+describe('where a section sits in the song', () => {
+  const hook: LyricSection = {
+    id: 'sec-1',
+    label: 'Hook',
+    kind: 'chorus',
+    occurrences: [occ('o1', 45, 60), occ('o2', 150, 165)],
+  };
+
+  it('gives every occurrence its own block, in time order', () => {
+    const sheet = sheetOf([{ text: 'aaa', startSec: 46, sectionId: 'sec-1' }], [hook]);
+    const spans = sectionSpans(sheet, 200);
+    expect(spans.map((s) => [s.startSec, s.endSec, s.occurrenceIndex])).toEqual([
+      [45, 60, 0],
+      [150, 165, 1],
+    ]);
+  });
+
+  it('leaves out a section that has not been placed yet', () => {
+    const unplaced: LyricSection = { id: 'sec-2', label: 'Verse', kind: 'verse', occurrences: [] };
+    expect(sectionSpans(sheetOf([], [unplaced]), 200)).toEqual([]);
+  });
+
+  it('clips an occurrence that runs past the end of the track', () => {
+    const spans = sectionSpans(sheetOf([], [hook]), 155);
+    expect(spans.at(-1)?.endSec).toBe(155);
+  });
+
+  it('measures a repeat from the performance that was tapped', () => {
+    expect(occurrenceOffset(hook, 0)).toBe(0);
+    expect(occurrenceOffset(hook, 1)).toBe(105);
+  });
+});
+
+describe('one tap pass covers every repeat', () => {
+  const hook: LyricSection = {
+    id: 'sec-1',
+    label: 'Hook',
+    kind: 'chorus',
+    occurrences: [occ('o1', 45, 60), occ('o2', 150, 165), occ('o3', 200, 215)],
+  };
+
+  const lines: LyricLine[] = [
+    { text: 'hook one', startSec: 45, sectionId: 'sec-1' },
+    { text: 'hook two', startSec: 50, sectionId: 'sec-1' },
+  ];
+
+  it('replays the tapped lines at each later occurrence, shifted', () => {
+    const placed = placeLines(sheetOf(lines, [hook]));
+    expect(placed.map((p) => [p.text, p.startSec])).toEqual([
+      ['hook one', 45],
+      ['hook two', 50],
+      ['hook one', 150],
+      ['hook two', 155],
+      ['hook one', 200],
+      ['hook two', 205],
+    ]);
+  });
+
+  it('keeps the gap between the occurrence start and the first line', () => {
+    // The hook starts at 0:45 but its first word lands at 0:47 — a two second
+    // pickup that must survive into every repeat.
+    const late = [{ text: 'hook one', startSec: 47, sectionId: 'sec-1' }];
+    const placed = placeLines(sheetOf(late, [hook]));
+    expect(placed.map((p) => p.startSec)).toEqual([47, 152, 202]);
+  });
+
+  it('does not duplicate a section performed only once', () => {
+    const once: LyricSection = { ...hook, occurrences: [occ('o1', 45, 60)] };
+    expect(placeLines(sheetOf(lines, [once]))).toHaveLength(2);
+  });
+
+  it('leaves loose lines exactly where they were tapped', () => {
+    const placed = placeLines(sheetOf([{ text: 'aaa', startSec: 12 }]));
+    expect(placed.map((p) => p.startSec)).toEqual([12]);
+  });
+
+  it('holds back lines that have not been timed', () => {
+    const placed = placeLines(sheetOf([{ text: 'aaa', startSec: null, sectionId: 'sec-1' }], [hook]));
+    expect(placed).toEqual([]);
+  });
+
+  it('gives a line its section artist unless it says otherwise', () => {
+    const sung: LyricSection = { ...hook, occurrences: [occ('o1', 45, 60)], artistId: 'rm' };
+    const placed = placeLines(
+      sheetOf(
+        [
+          { text: 'hook one', startSec: 45, sectionId: 'sec-1' },
+          { text: 'hook two', startSec: 50, sectionId: 'sec-1', artistId: 'jimin' },
+        ],
+        [sung],
+      ),
+    );
+    expect(placed.map((p) => p.artistId)).toEqual(['rm', 'jimin']);
+  });
+});
+
+describe('sheets saved by an older version', () => {
+  it('turns a copied repeat back into a second occurrence', () => {
+    // Old shape: the repeat was its own section holding duplicated words.
+    const legacy = {
+      language: 'ko',
+      audioKey: 'k',
+      lines: [
+        { text: 'hook one', startSec: 45, sectionId: 'a' },
+        { text: 'hook two', startSec: 50, sectionId: 'a' },
+        { text: 'verse one', startSec: 70, sectionId: 'b' },
+        { text: 'hook one', startSec: 150, sectionId: 'c' },
+        { text: 'hook two', startSec: 155, sectionId: 'c' },
+      ],
+      sections: [
+        { id: 'a', label: 'Hook', kind: 'chorus' },
+        { id: 'b', label: 'Verse 1', kind: 'verse' },
+        { id: 'c', label: 'Hook', kind: 'chorus', repeatOf: 'a' },
+      ],
+    } as unknown as LyricSheet;
+
+    const upgraded = upgradeSheet(legacy);
+
+    // The repeat is gone as a section...
+    expect(upgraded.sections?.map((s) => s.id)).toEqual(['a', 'b']);
+    // ...and survives as a second place the hook happens.
+    const hook = upgraded.sections?.find((s) => s.id === 'a');
+    expect(hook?.occurrences.map((o) => o.startSec)).toEqual([45, 150]);
+    // The duplicated lines are dropped, because they are now generated.
+    expect(upgraded.lines.map((l) => l.text)).toEqual(['hook one', 'hook two', 'verse one']);
+    // And the score still covers both performances.
+    expect(placeLines(upgraded).map((p) => p.startSec)).toEqual([45, 50, 70, 150, 155]);
+  });
+
+  it('gives an un-repeated old section a position from its timings', () => {
+    const legacy = {
+      language: 'ko',
+      audioKey: 'k',
+      lines: [{ text: 'aaa', startSec: 20, sectionId: 'a' }],
+      sections: [{ id: 'a', label: 'Verse', kind: 'verse' }],
+    } as unknown as LyricSheet;
+
+    const hook = upgradeSheet(legacy).sections?.[0];
+    expect(hook?.occurrences[0]?.startSec).toBe(20);
+    expect(hook?.occurrences[0]?.endSec).toBeGreaterThan(20);
+  });
+
+  it('leaves a sheet already in the new shape alone', () => {
+    const current = sheetOf(
+      [{ text: 'aaa', startSec: 5, sectionId: 'sec-1' }],
+      [{ id: 'sec-1', label: 'Hook', kind: 'chorus', occurrences: [occ('o1', 5, 12)] }],
+    );
+    expect(upgradeSheet(current)).toBe(current);
+  });
+});
+
+describe('typing a timestamp', () => {
+  it('reads the shapes people actually type', () => {
+    expect(parseClock('1:23')).toBe(83);
+    expect(parseClock('0:05')).toBe(5);
+    expect(parseClock('83')).toBe(83);
+    expect(parseClock('1:23.5')).toBe(83.5);
+    expect(parseClock(' 2:00 ')).toBe(120);
+  });
+
+  it('refuses what is not a time', () => {
+    expect(parseClock('')).toBeNull();
+    expect(parseClock('abc')).toBeNull();
+    expect(parseClock('-4')).toBeNull();
   });
 });

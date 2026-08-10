@@ -43,16 +43,38 @@ const GROUPS: readonly Group[] = [
     ],
   },
   {
-    title: 'Sections',
-    note: 'Headings in brackets organise the sheet: [Verse 1], [Hook], [후렴], [サビ].',
+    title: 'Sections — Compartmentalize',
+    note: 'Nothing is detected. You say what the parts are, and where each one happens.',
     items: [
-      { keys: ['Click a section'], what: 'Play from the start of that part' },
-      { keys: ['Shift-click'], what: 'Loop that part, for drilling one passage' },
+      { keys: ['+ Add section'], what: 'Make a part — verse, hook, bridge. Name it and pick its kind' },
+      { keys: ['Click a line'], what: 'Select it · Shift for a run · Ctrl or ⌘ to add one' },
+      { keys: ['Drag'], what: 'Carry the selected lines into a section, or back out below the list' },
       {
-        keys: ['Repeat a heading'],
-        what: 'Write [Hook] again with nothing under it to reuse its words, untimed',
+        keys: ['+ Add where it happens'],
+        what: 'Place the part on the timeline; the first one offers the moment you tapped',
       },
-      { keys: ['Detect sections'], what: 'Find the lines that repeat and mark them as the chorus' },
+      {
+        keys: ['＋ It repeats here'],
+        what: 'Mark a return — its lines replay shifted, so you tap a hook once however often it comes back',
+      },
+      { keys: ['⤓'], what: 'Set that start or end to the playhead. Or type the time: 1:23' },
+    ],
+  },
+  {
+    title: 'Artists',
+    note: 'A section carries a default; any line can override it.',
+    items: [
+      { keys: ['+ Add artist'], what: 'Add each singer once, then tag with the dropdowns' },
+      { keys: ['Whole section'], what: 'Give every line in the part to one artist' },
+      { keys: ['Per line'], what: 'Override a single line, for a verse that trades between members' },
+    ],
+  },
+  {
+    title: 'The section strip',
+    items: [
+      { keys: ['Click a block'], what: 'Play from the start of that part' },
+      { keys: ['Shift-click'], what: 'Loop that part, for drilling one passage' },
+      { keys: ['↺'], what: 'Marks a repeat rather than the performance you tapped' },
     ],
   },
   {

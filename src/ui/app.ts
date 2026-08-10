@@ -27,6 +27,7 @@ import {
 } from '@/storage/project';
 import { download } from '@/export';
 import { getSheet, setSheet } from '@/transcription/providers/lyrics';
+import { CompartmentalizeView } from './compartmentalize';
 import { ACCEPT_ATTRIBUTE } from '@/audio/decoder';
 import { HelpView } from './help';
 import { LibraryView } from './library';
@@ -108,6 +109,47 @@ export function mountApp(root: HTMLElement): void {
   const lyricsPanel = new LyricsPanelView(store, player, {
     onBuild: () => void buildAndStudy(),
   });
+
+  // Sorting the song into parts. Writes straight into the sheet, the same way
+  // the lyric panel does, so a section is saved the moment it is drawn.
+  const compartmentalize = new CompartmentalizeView(store, player, {
+    onCommit: (change) => {
+      const sheet = getSheet();
+      setSheet({
+        ...sheet,
+        ...(change.lines ? { lines: change.lines } : {}),
+        ...(change.sections ? { sections: change.sections } : {}),
+        ...(change.artists ? { artists: change.artists } : {}),
+      });
+      void persistSheet();
+    },
+    onSeek: (seconds) => player.seek(seconds),
+    onPlay: () => void player.play(),
+    onLoop: (start, end) => player.setLoop(start, end),
+  });
+
+  /** Save the sheet as it stands, and say so in the toolbar. */
+  const persistSheet = async (): Promise<void> => {
+    const { trackId, audio, mode, inputLanguage } = store.state;
+    if (!trackId || !audio) return;
+    store.patch({ saveState: 'saving' });
+    try {
+      await saveTrack({
+        id: trackId,
+        title: audio.name.replace(/\.[^.]+$/, ''),
+        fileName: audio.name,
+        durationSec: audio.durationSec,
+        language: inputLanguage === 'auto' ? 'ko' : inputLanguage,
+        mode,
+        sheet: getSheet(),
+      });
+      store.patch({ saveState: 'saved', savedAt: Date.now() });
+    } catch {
+      store.patch({ saveState: 'failed' });
+    }
+    // Redraw: the view reads the sheet back out of the store on every change.
+    store.patch({});
+  };
 
   let currentFile: File | null = null;
 
@@ -426,6 +468,7 @@ export function mountApp(root: HTMLElement): void {
       grid.element,
     ),
     el('section', { class: 'stage__score' }, scoreScroll, inspector.element),
+    compartmentalize.element,
     practice.element,
   );
 
@@ -484,6 +527,7 @@ export function mountApp(root: HTMLElement): void {
     trackBar,
     practice,
     sectionBar,
+    compartmentalize,
     help,
   ];
   store.events.on('change', (state) => {
@@ -491,6 +535,7 @@ export function mountApp(root: HTMLElement): void {
     document.body.classList.toggle('has-audio', Boolean(state.audio));
     // One class drives the whole layout switch; the CSS does the rest.
     document.body.classList.toggle('mode-annotation', state.mode === 'annotation');
+    document.body.classList.toggle('mode-compartmentalize', state.mode === 'compartmentalize');
     document.body.classList.toggle('mode-learning', state.mode === 'learning');
     document.body.classList.toggle('mode-practice', state.mode === 'practice');
   });

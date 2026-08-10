@@ -33,17 +33,38 @@ export type SectionKind =
   | 'outro'
   | 'other';
 
+/** Somebody who sings on the track. */
+export interface Artist {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * One place in the song where a section is performed.
+ *
+ * A hook that comes back three times is one section with three occurrences,
+ * not three sections. That distinction is what lets you type the words once
+ * and tap them once: the first occurrence holds the real timings and the
+ * others replay them, shifted by the gap between their starts.
+ */
+export interface SectionOccurrence {
+  readonly id: string;
+  readonly startSec: number;
+  readonly endSec: number;
+}
+
 export interface LyricSection {
   readonly id: string;
   /** As written — "Verse 2", "Hook". */
   readonly label: string;
   readonly kind: SectionKind;
+  /** Every place this section happens, earliest first. */
+  readonly occurrences: readonly SectionOccurrence[];
   /**
-   * Set when this section's words were copied from an earlier section with
-   * the same name. Writing `[Chorus]` a second time with nothing under it
-   * brings the words back without retyping them; only the timings are new.
+   * Who sings it, by default. Individual lines override this, because a verse
+   * that trades lines between members is the normal case, not the exception.
    */
-  readonly repeatOf?: string;
+  readonly artistId?: string;
 }
 
 export interface LyricLine {
@@ -52,6 +73,8 @@ export interface LyricLine {
   readonly startSec: number | null;
   /** Which section this line belongs to. */
   readonly sectionId?: string;
+  /** Who sings this line, overriding whatever its section says. */
+  readonly artistId?: string;
   /**
    * What the line means, in your own words.
    *
@@ -68,10 +91,18 @@ export interface LyricSheet {
   /** Identifies which audio file these timings belong to. */
   readonly audioKey: string;
   readonly sections?: readonly LyricSection[];
+  readonly artists?: readonly Artist[];
 }
 
 export function emptySheet(language: LanguageTag = 'ko'): LyricSheet {
-  return { language, lines: [], audioKey: '', sections: [] };
+  return { language, lines: [], audioKey: '', sections: [], artists: [] };
+}
+
+/** Ids that do not collide across a session, without pulling in a uuid library. */
+let idCounter = 0;
+export function freshId(prefix: string): string {
+  idCounter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${idCounter.toString(36)}`;
 }
 
 /**
@@ -133,21 +164,11 @@ export function sectionKindFor(label: string): SectionKind {
   return 'other';
 }
 
-/**
- * Section headings are matched loosely on their name, so "Hook" == "hook 2"
- * and a repeat can be recognised.
- *
- * Uses the Unicode letter class rather than an ASCII-and-Hangul range: the
- * old version stripped every Japanese, Chinese and accented character, which
- * reduced `[サビ]` to an empty string and made every Japanese heading collide
- * with every other one.
- */
-function sectionKey(label: string): string {
-  return label.toLowerCase().replace(/[^\p{L}]+/gu, '');
-}
-
 export interface SectionSpan {
   readonly section: LyricSection;
+  readonly occurrence: SectionOccurrence;
+  /** 0 for the reference performance, higher for each repeat. */
+  readonly occurrenceIndex: number;
   readonly startSec: number;
   readonly endSec: number;
   readonly lineCount: number;
@@ -157,302 +178,152 @@ export interface SectionSpan {
 /**
  * Where each section sits in the song.
  *
- * Derived from the timings you tapped rather than from anything guessed: a
- * section begins at its first timed line and runs until the next section
- * starts. Sections with nothing timed yet are left out, because a section with
- * no position on the timeline is not something you can click to replay.
+ * Every span comes from a start and end you set by hand, so the strip under
+ * the waveform shows what you said rather than what anything inferred. A
+ * section with no occurrences yet simply has no position, and does not appear.
  */
 export function sectionSpans(sheet: LyricSheet, durationSec: number): SectionSpan[] {
-  const sections = sheet.sections ?? [];
-  if (sections.length === 0) return [];
+  const spans: SectionSpan[] = [];
 
-  const spans = sections
-    .map((section) => {
-      const lines = sheet.lines.filter((line) => line.sectionId === section.id);
-      const timed = lines
-        .map((line) => line.startSec)
-        .filter((at): at is number => at !== null);
-      return {
+  for (const section of sheet.sections ?? []) {
+    const lines = sheet.lines.filter((line) => line.sectionId === section.id);
+    const timedCount = lines.filter((line) => line.startSec !== null).length;
+
+    section.occurrences.forEach((occurrence, occurrenceIndex) => {
+      const startSec = Math.max(0, Math.min(occurrence.startSec, durationSec));
+      const endSec = Math.max(startSec, Math.min(occurrence.endSec, durationSec));
+      if (endSec - startSec < 0.01) return;
+      spans.push({
         section,
-        startSec: timed.length > 0 ? Math.min(...timed) : Number.NaN,
-        endSec: durationSec,
+        occurrence,
+        occurrenceIndex,
+        startSec,
+        endSec,
         lineCount: lines.length,
-        timedCount: timed.length,
-      };
-    })
-    .filter((span) => Number.isFinite(span.startSec))
-    .sort((a, b) => a.startSec - b.startSec);
+        timedCount,
+      });
+    });
+  }
 
-  // Each section runs up to the next one. Ordering by time rather than by
-  // position in the text matters: a repeated chorus is written late in the
-  // sheet but may be tapped anywhere in the song.
-  return spans.map((span, index) => ({
-    ...span,
-    endSec: spans[index + 1]?.startSec ?? durationSec,
-  }));
-}
-
-export interface ParsedLyrics {
-  readonly lines: LyricLine[];
-  readonly sections: LyricSection[];
+  return spans.sort((a, b) => a.startSec - b.startSec);
 }
 
 /**
- * Parse pasted text into sections and lines.
+ * How much later a repeat happens than the performance you actually tapped.
  *
- * A line in brackets — `[Chorus]`, `(Verse 2)` — is a heading rather than
- * something to sing. Headings were previously discarded; now they organise
- * the sheet, which matters most for the part that repeats: writing `[Hook]` a
- * second time with nothing beneath it brings back the words from the first
- * `[Hook]`, so a chorus that recurs four times is typed once and tapped four
+ * The first occurrence is the reference: its lines hold real, tapped times.
+ * Every later occurrence is the same lines moved along by the distance between
+ * the two starts, which is why one tap pass covers a hook that returns four
  * times.
  */
-export function parseSheet(raw: string, existing?: LyricSheet): ParsedLyrics {
-  /**
-   * Every occurrence of each line, in order — including the untimed ones.
-   *
-   * A repeated chorus has the same text in several places, so a plain
-   * text→time map cannot tell the second hook from the first. Keeping the
-   * occurrences in a queue, nulls and all, means the Nth occurrence of a line
-   * gets back the Nth time, which is exactly right whenever the structure has
-   * not changed and degrades sensibly when it has.
-   */
-  const previous = new Map<string, (number | null)[]>();
-  const previousTranslations = new Map<string, string>();
-  for (const line of existing?.lines ?? []) {
-    const seen = previous.get(line.text);
-    if (seen) seen.push(line.startSec);
-    else previous.set(line.text, [line.startSec]);
-    if (line.translation) previousTranslations.set(line.text, line.translation);
-  }
+export function occurrenceOffset(section: LyricSection, occurrenceIndex: number): number {
+  const base = section.occurrences[0];
+  const here = section.occurrences[occurrenceIndex];
+  if (!base || !here) return 0;
+  return here.startSec - base.startSec;
+}
 
-  const sections: LyricSection[] = [];
-  const lines: LyricLine[] = [];
-  /** First section seen under each heading name, for resolving repeats. */
-  const firstByKey = new Map<string, string>();
-  /** The words belonging to each section, so a repeat can copy them. */
-  const wordsBySection = new Map<string, string[]>();
-  let current: LyricSection | null = null;
+/** A line placed at one particular moment in the song. */
+export interface PlacedLine {
+  readonly text: string;
+  readonly startSec: number;
+  readonly translation?: string;
+  readonly artistId?: string;
+  /** Index into `sheet.lines` — the line this came from. */
+  readonly sourceIndex: number;
+  readonly occurrenceIndex: number;
+}
 
-  /** Hand back each remembered time once, to the occurrence it belonged to. */
-  const takeTime = (text: string): number | null => previous.get(text)?.shift() ?? null;
+/**
+ * Every line, at every moment it is performed.
+ *
+ * The sheet stores each line once. A section that happens more than once turns
+ * one stored line into several placed ones, so the score covers the whole song
+ * without you having typed or tapped the chorus four times.
+ */
+export function placeLines(sheet: LyricSheet): PlacedLine[] {
+  const sections = new Map((sheet.sections ?? []).map((section) => [section.id, section]));
+  const placed: PlacedLine[] = [];
 
-  const addLine = (text: string): void => {
-    const translation = previousTranslations.get(text);
-    lines.push({
-      text,
-      startSec: takeTime(text),
-      ...(current ? { sectionId: current.id } : {}),
-      ...(translation ? { translation } : {}),
+  sheet.lines.forEach((line, sourceIndex) => {
+    if (line.startSec === null) return;
+    const section = line.sectionId === undefined ? undefined : sections.get(line.sectionId);
+    const artistId = line.artistId ?? section?.artistId;
+
+    const at = (startSec: number, occurrenceIndex: number): PlacedLine => ({
+      text: line.text,
+      startSec,
+      sourceIndex,
+      occurrenceIndex,
+      ...(line.translation === undefined ? {} : { translation: line.translation }),
+      ...(artistId === undefined ? {} : { artistId }),
     });
-    if (current) wordsBySection.get(current.id)?.push(text);
-  };
 
-  for (const rawLine of raw.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line.length === 0) continue;
-
-    const heading = /^[[(](.+)[\])]$/.exec(line);
-    if (heading) {
-      const label = (heading[1] ?? '').trim();
-      const key = sectionKey(label);
-      const id = `sec-${sections.length}`;
-      const source = firstByKey.get(key);
-
-      current = {
-        id,
-        label,
-        kind: sectionKindFor(label),
-        ...(source ? { repeatOf: source } : {}),
-      };
-      sections.push(current);
-      wordsBySection.set(id, []);
-      if (!source) firstByKey.set(key, id);
-      continue;
+    // No section, or a section performed once: the line sits where it was
+    // tapped and nothing is duplicated.
+    if (!section || section.occurrences.length < 2) {
+      placed.push(at(line.startSec, 0));
+      return;
     }
 
-    addLine(line);
-  }
+    section.occurrences.forEach((_occurrence, index) => {
+      placed.push(at(line.startSec! + occurrenceOffset(section, index), index));
+    });
+  });
 
-  // Any section left empty that names an earlier one inherits its words.
-  for (const section of sections) {
-    if (!section.repeatOf) continue;
-    if ((wordsBySection.get(section.id)?.length ?? 0) > 0) continue;
-    const source = wordsBySection.get(section.repeatOf) ?? [];
-    if (source.length === 0) continue;
+  return placed.sort((a, b) => a.startSec - b.startSec);
+}
 
-    // Insert the copied lines in the right place: immediately after the
-    // heading, which is wherever the next section's lines begin.
-    const insertAt = indexAfterSection(lines, sections, section.id);
-    const copied = source.map<LyricLine>((text) => ({
-      text,
-      startSec: takeTime(text),
-      sectionId: section.id,
-    }));
-    lines.splice(insertAt, 0, ...copied);
-    wordsBySection.set(section.id, [...source]);
-  }
-
-  return { lines, sections };
+/** Text in brackets is a marker someone typed, not something to sing. */
+export function isMarkerLine(line: string): boolean {
+  return /^[[(].*[\])]$/.test(line);
 }
 
 /**
- * The sheet, written back out as the text you would have typed.
+ * Split pasted text into lines.
  *
- * The editing box needs this to know whether its contents still match the
- * sheet. Comparing against the bare line texts — which is what it used to do —
- * can never match a sheet that has headings, so the box looked permanently
- * out of date and got overwritten with a headingless copy of itself. From
- * there every later edit reparsed text whose structure had already been
- * thrown away, and the sections vanished for good.
+ * Everything a line carries besides its words — its timing, its translation,
+ * which section it was dropped into, who sings it — is attached in the app,
+ * not in the text. So an edit has to hand all of that back, or fixing one
+ * typo would undo an evening of sorting.
  *
- * Round-trips: `parseSheet(sheetToText(s))` reproduces `s`.
+ * The carry-over is per occurrence, in order: the third "same" line gets back
+ * what the third one had. A plain text→value map cannot tell one performance
+ * of a repeated line from another, which is how timings used to end up
+ * shuffled onto the wrong lines.
+ *
+ * Bracketed markers are dropped rather than turned into sections. Sections are
+ * made by hand in Compartmentalize now — nothing about the song is guessed —
+ * but `[Verse 1]` is still not a lyric, and putting it on the staff to be
+ * pronounced would be worse than leaving it out.
  */
-export function sheetToText(sheet: LyricSheet): string {
-  const sections = sheet.sections ?? [];
-  if (sections.length === 0) return sheet.lines.map((line) => line.text).join('\n');
-
-  const out: string[] = [];
-  const byId = new Map<string, string[]>();
-  for (const section of sections) byId.set(section.id, []);
-
-  // Anything before the first heading has no section and stays at the top.
-  for (const line of sheet.lines) {
-    const bucket = line.sectionId === undefined ? undefined : byId.get(line.sectionId);
-    if (bucket) bucket.push(line.text);
-    else out.push(line.text);
-  }
-
-  for (const section of sections) {
-    out.push(`[${section.label}]`);
-    out.push(...(byId.get(section.id) ?? []));
-  }
-  return out.join('\n');
-}
-
-/** Where a section's lines should go, given the sections that follow it. */
-function indexAfterSection(
-  lines: readonly LyricLine[],
-  sections: readonly LyricSection[],
-  sectionId: string,
-): number {
-  const order = sections.findIndex((section) => section.id === sectionId);
-  for (let i = order + 1; i < sections.length; i += 1) {
-    const next = sections[i]!.id;
-    const at = lines.findIndex((line) => line.sectionId === next);
-    if (at >= 0) return at;
-  }
-  return lines.length;
-}
-
-/**
- * Guess the structure of an unmarked lyric sheet.
- *
- * Not audio analysis — just the observation that the chorus is the bit that
- * comes back. A run of consecutive lines appearing more than once in a lyric
- * is almost always the hook, and everything between those runs is a verse.
- *
- * That is a narrow claim, and narrow is the point: it is right most of the
- * time, wrong in obvious ways when it is wrong, and every heading it produces
- * is text you can edit. It cannot find a bridge or an intro, because nothing
- * about the words marks those out — only the music does.
- */
-export function suggestSections(lineTexts: readonly string[]): string[] {
-  if (lineTexts.length < 4) return [...lineTexts];
-
-  const repeated = findRepeatedBlock(lineTexts);
-  const out: string[] = [];
-
-  if (!repeated) {
-    // Nothing repeats: call the whole thing one verse rather than inventing
-    // divisions that are not there.
-    out.push('[Verse 1]', ...lineTexts);
-    return out;
-  }
-
-  const { length, starts } = repeated;
-  const chorusAt = new Set(starts);
-  let verseNumber = 0;
-  let index = 0;
-  let inVerse = false;
-
-  while (index < lineTexts.length) {
-    if (chorusAt.has(index)) {
-      out.push('[Chorus]');
-      for (let i = 0; i < length; i += 1) out.push(lineTexts[index + i]!);
-      index += length;
-      inVerse = false;
-      continue;
-    }
-    if (!inVerse) {
-      verseNumber += 1;
-      out.push(`[Verse ${verseNumber}]`);
-      inVerse = true;
-    }
-    out.push(lineTexts[index]!);
-    index += 1;
-  }
-
-  return out;
-}
-
-/** The longest run of lines that occurs more than once, without overlaps. */
-function findRepeatedBlock(
-  lines: readonly string[],
-): { length: number; starts: number[] } | null {
-  const maxLength = Math.min(10, Math.floor(lines.length / 2));
-
-  for (let length = maxLength; length >= 2; length -= 1) {
-    const seen = new Map<string, number[]>();
-    for (let start = 0; start + length <= lines.length; start += 1) {
-      const key = lines.slice(start, start + length).join('\n');
-      const at = seen.get(key);
-      if (at) at.push(start);
-      else seen.set(key, [start]);
-    }
-
-    for (const [, starts] of seen) {
-      if (starts.length < 2) continue;
-      // Keep only non-overlapping occurrences.
-      const kept: number[] = [];
-      let lastEnd = -1;
-      for (const start of starts) {
-        if (start >= lastEnd) {
-          kept.push(start);
-          lastEnd = start + length;
-        }
-      }
-      if (kept.length >= 2) return { length, starts: kept };
-    }
-  }
-  return null;
-}
-
-/** Split pasted text into lines, dropping blank ones and section headers. */
 export function parseLyrics(raw: string, existing?: LyricSheet): LyricLine[] {
-  // Carry timings and translations across an edit by matching on line text, so
-  // fixing a typo in one line costs you that line and nothing else.
-  const previous = new Map<string, number>();
-  const previousTranslations = new Map<string, string>();
+  const carried = new Map<string, LyricLine[]>();
   for (const line of existing?.lines ?? []) {
-    if (line.startSec !== null) previous.set(line.text, line.startSec);
-    if (line.translation) previousTranslations.set(line.text, line.translation);
+    const seen = carried.get(line.text);
+    if (seen) seen.push(line);
+    else carried.set(line.text, [line]);
   }
 
   return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
-    // Section markers like [Verse 1] are structure, not words to sing.
-    .filter((line) => line.length > 0 && !/^[[(].*[\])]$/.test(line))
+    .filter((line) => line.length > 0 && !isMarkerLine(line))
     .map((text) => {
-      const carried = previous.get(text);
-      const translation = previousTranslations.get(text);
+      const before = carried.get(text)?.shift();
       return {
         text,
-        startSec: carried ?? null,
-        ...(translation ? { translation } : {}),
+        startSec: before?.startSec ?? null,
+        ...(before?.translation === undefined ? {} : { translation: before.translation }),
+        ...(before?.sectionId === undefined ? {} : { sectionId: before.sectionId }),
+        ...(before?.artistId === undefined ? {} : { artistId: before.artistId }),
       };
     });
+}
+
+/** How many bracketed markers the paste contained, so the panel can say so. */
+export function countMarkerLines(raw: string): number {
+  return raw.split(/\r?\n/).filter((line) => isMarkerLine(line.trim())).length;
 }
 
 /** A stable key for localStorage, so timings survive a reload. */
@@ -491,10 +362,98 @@ export function loadSheet(audioKey: string): LyricSheet | null {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Bring a sheet saved by an older version up to the current shape.
+ *
+ * Sections used to have no explicit position — one began at its first timed
+ * line and ran until the next began — and a repeated chorus was a second
+ * section carrying a copy of the words. Both are now expressed the same way:
+ * one section, several occurrences.
+ *
+ * So a repeat is folded back into the section it copied, its duplicated lines
+ * are dropped, and the moment it happened survives as an occurrence. Work
+ * already done stays done, and nothing needs re-tapping.
+ *
+ * Idempotent — a sheet already in the new shape passes straight through.
+ */
+export function upgradeSheet(sheet: LyricSheet): LyricSheet {
+  const sections = sheet.sections ?? [];
+  const legacy = sections as readonly (LyricSection & { repeatOf?: string })[];
+  const needsWork = legacy.some(
+    (section) => !Array.isArray(section.occurrences) || section.repeatOf !== undefined,
+  );
+  if (!needsWork) return sheet;
+
+  /** When each section was performed, from the lines that were tapped. */
+  const windowFor = (sectionId: string): { startSec: number; endSec: number } | null => {
+    const times = sheet.lines
+      .filter((line) => line.sectionId === sectionId)
+      .map((line) => line.startSec)
+      .filter((at): at is number => at !== null);
+    if (times.length === 0) return null;
+    return {
+      startSec: Math.min(...times),
+      // The old model had no end at all. Half a bar past the last line is a
+      // guess, but a visible, editable one — better than a section with no
+      // extent, which cannot be clicked or looped.
+      endSec: Math.max(...times) + TRAILING_LINE_SEC,
+    };
+  };
+
+  const kept: LyricSection[] = [];
+  const byId = new Map<string, LyricSection>();
+  /** Repeat section id → the section it folds into. */
+  const folded = new Map<string, string>();
+
+  for (const section of legacy) {
+    const target = section.repeatOf ? (folded.get(section.repeatOf) ?? section.repeatOf) : null;
+    const host = target === null ? undefined : byId.get(target);
+    const window = windowFor(section.id);
+
+    if (host) {
+      folded.set(section.id, host.id);
+      if (window) {
+        const merged: LyricSection = {
+          ...host,
+          occurrences: [...host.occurrences, { id: freshId('occ'), ...window }],
+        };
+        byId.set(host.id, merged);
+        kept[kept.indexOf(host)] = merged;
+      }
+      continue;
+    }
+
+    const { repeatOf: _dropped, ...rest } = section;
+    const upgraded: LyricSection = {
+      ...rest,
+      occurrences: Array.isArray(section.occurrences)
+        ? section.occurrences
+        : window
+          ? [{ id: freshId('occ'), ...window }]
+          : [],
+    };
+    kept.push(upgraded);
+    byId.set(upgraded.id, upgraded);
+  }
+
+  // A repeat's lines were copies of the section it repeated, so now that the
+  // repeat is an occurrence rather than a section, those copies are duplicates.
+  const lines = sheet.lines.filter(
+    (line) => line.sectionId === undefined || !folded.has(line.sectionId),
+  );
+
+  return {
+    ...sheet,
+    lines,
+    sections: kept.map((section) => byId.get(section.id) ?? section),
+    artists: sheet.artists ?? [],
+  };
+}
+
 let currentSheet: LyricSheet = emptySheet();
 
 export function setSheet(sheet: LyricSheet): void {
-  currentSheet = sheet;
+  currentSheet = upgradeSheet(sheet);
 }
 
 export function getSheet(): LyricSheet {
@@ -529,13 +488,11 @@ class LyricSheetProvider implements TranscriptionProvider {
 
     // Only timed lines can be placed on the staff. Untimed ones are held back
     // rather than dropped — the panel keeps showing them as needing a tap.
-    const timed = currentSheet.lines
-      .map((line, index) => ({ ...line, index }))
-      .filter(
-        (line): line is { text: string; startSec: number; translation?: string; index: number } =>
-          line.startSec !== null,
-      )
-      .sort((a, b) => a.startSec - b.startSec);
+    //
+    // A section performed more than once contributes its lines at each
+    // occurrence, so the score covers the whole song even though the chorus
+    // was typed and tapped exactly once.
+    const timed = placeLines(currentSheet);
 
     if (timed.length === 0) {
       throw new TranscriptionError('No lines have been timed yet.', this.id);
@@ -548,7 +505,7 @@ class LyricSheetProvider implements TranscriptionProvider {
         request.audio.durationSec,
       );
       return {
-        id: `line-${line.index}`,
+        id: `line-${line.sourceIndex}-${line.occurrenceIndex}`,
         text: line.text,
         startSec: line.startSec,
         endSec,

@@ -16,7 +16,7 @@ import { el } from './dom';
 const STORAGE_KEY = 'beyond.mode.';
 
 /** A mode you chose by hand for a particular song, which outranks the default. */
-const MODES: readonly ViewMode[] = ['annotation', 'learning', 'practice'];
+const MODES: readonly ViewMode[] = ['annotation', 'compartmentalize', 'learning', 'practice'];
 
 export function savedModeFor(audioKey: string): ViewMode | null {
   try {
@@ -83,6 +83,11 @@ export class ModeSwitchView {
       'div',
       { class: 'modeswitch', role: 'group', 'aria-label': 'View mode' },
       button('annotation', 'Annotation', 'Paste lyrics and tap the timing'),
+      button(
+        'compartmentalize',
+        'Compartmentalize',
+        'Group the lines into sections, mark where they repeat, and say who sings what',
+      ),
       button('learning', 'Learning', 'Follow the score and read along'),
       button('practice', 'Practice', 'Record yourself and score your timing'),
     );
@@ -96,6 +101,10 @@ export class ModeSwitchView {
     }
     // Neither Learning nor Practice has anything to show until a score exists
     // — Practice grades against the grid the score is built from.
+    //
+    // Compartmentalize is deliberately not gated on the score: sorting the
+    // lyrics into sections is work you do *before* building, and a button you
+    // cannot press until after the step it precedes is no button at all.
     this.#buttons.get('learning')?.toggleAttribute('disabled', state.score === null);
     this.#buttons.get('practice')?.toggleAttribute('disabled', state.score === null);
     this.element.classList.toggle('is-hidden', state.audio === null);
