@@ -28,8 +28,10 @@ import {
 import { download } from '@/export';
 import { getSheet, setSheet } from '@/transcription/providers/lyrics';
 import { ACCEPT_ATTRIBUTE } from '@/audio/decoder';
+import { HelpView } from './help';
 import { LibraryView } from './library';
 import { PracticeView } from './practice';
+import { SectionBarView } from './sectionBar';
 import { TrackBarView } from './trackBar';
 import { LyricsPanelView } from './lyricsPanel';
 import { defaultModeFor, ModeSwitchView, savedModeFor, saveModeFor } from './modeSwitch';
@@ -73,6 +75,16 @@ export function mountApp(root: HTMLElement): void {
   );
   const status = new StatusView();
   const grid = new SyllableGridView((seconds) => player.seek(seconds));
+
+  // Structure lives with the transport, not inside a mode: all three views
+  // need to jump around the song.
+  const sectionBar = new SectionBarView({
+    onSeek: (seconds) => player.seek(seconds),
+    onLoop: (start, end) => player.setLoop(start, end),
+    onPlay: () => void player.play(),
+  });
+
+  const help = new HelpView(() => help.setOpen(false));
 
   // Remembers the level to put back, so ducking the backing track under a
   // take never leaves the volume slider somewhere the user did not set it.
@@ -368,6 +380,7 @@ export function mountApp(root: HTMLElement): void {
     },
     onOpenFile: pickFile,
     onSaveToFile: saveToFile,
+    onToggleHelp: () => help.setOpen(!help.isOpen),
   });
 
   /**
@@ -408,6 +421,7 @@ export function mountApp(root: HTMLElement): void {
       'section',
       { class: 'stage__staff' },
       el('div', { class: 'staff__frame' }, staff.element),
+      sectionBar.element,
       transport.element,
       grid.element,
     ),
@@ -421,6 +435,7 @@ export function mountApp(root: HTMLElement): void {
     el('div', { class: 'opening' }, dropzone.element, library.element),
     stage,
     drawer.element,
+    help.element,
     fileInput,
     projectInput,
     status.element,
@@ -468,6 +483,8 @@ export function mountApp(root: HTMLElement): void {
     drawer,
     trackBar,
     practice,
+    sectionBar,
+    help,
   ];
   store.events.on('change', (state) => {
     for (const view of views) view.update(state);
@@ -561,10 +578,13 @@ export function mountApp(root: HTMLElement): void {
       case 'ArrowRight':
         player.nudge(event.shiftKey ? 10 : 3);
         break;
+      case '?':
+        help.setOpen(!help.isOpen);
+        break;
       case 'Escape':
-        // Close the drawer first if it is open — Escape should dismiss the
-        // thing most recently in front of you.
-        if (store.state.libraryOpen) store.patch({ libraryOpen: false });
+        // Dismiss whatever is most recently in front of you, outermost first.
+        if (help.isOpen) help.setOpen(false);
+        else if (store.state.libraryOpen) store.patch({ libraryOpen: false });
         else store.patch({ selected: null });
         break;
       default:

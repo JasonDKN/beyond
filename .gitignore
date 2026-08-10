@@ -20,3 +20,8 @@ Thumbs.db
 
 # Cached ASR model weights, if you choose to vendor them
 public/models/
+
+# Scratch left behind by remote file transfer and by git operations
+# the bridge could not clean up itself.
+_to_delete/
+beyond-src-*.zip

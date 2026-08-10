@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseSheet,
   sectionKindFor,
+  sectionSpans,
   suggestSections,
 } from '@/transcription/providers/lyrics';
 
@@ -111,5 +112,91 @@ describe('detecting structure from the words alone', () => {
     const out = suggestSections(['x', 'h1', 'h2', 'h3', 'y', 'h1', 'h2', 'h3']);
     const chorusAt = out.indexOf('[Chorus]');
     expect(out.slice(chorusAt + 1, chorusAt + 4)).toEqual(['h1', 'h2', 'h3']);
+  });
+});
+
+describe('section headings in other languages', () => {
+  it('reads Korean headings', () => {
+    expect(sectionKindFor('후렴')).toBe('chorus');
+    expect(sectionKindFor('훅')).toBe('chorus');
+    expect(sectionKindFor('코러스')).toBe('chorus');
+    expect(sectionKindFor('벌스 1')).toBe('verse');
+    expect(sectionKindFor('절')).toBe('verse');
+    expect(sectionKindFor('브릿지')).toBe('bridge');
+    expect(sectionKindFor('브리지')).toBe('bridge');
+    expect(sectionKindFor('인트로')).toBe('intro');
+    expect(sectionKindFor('아웃트로')).toBe('outro');
+    expect(sectionKindFor('프리코러스')).toBe('pre-chorus');
+  });
+
+  it('reads Japanese headings, which have no English cognate', () => {
+    // サビ is the chorus and Aメロ the verse — no amount of transliteration
+    // would get there, so these need naming outright.
+    expect(sectionKindFor('サビ')).toBe('chorus');
+    expect(sectionKindFor('Aメロ')).toBe('verse');
+    expect(sectionKindFor('Bメロ')).toBe('pre-chorus');
+    expect(sectionKindFor('ブリッジ')).toBe('bridge');
+    expect(sectionKindFor('イントロ')).toBe('intro');
+  });
+
+  it('reads Chinese, Spanish, French and German headings', () => {
+    expect(sectionKindFor('副歌')).toBe('chorus');
+    expect(sectionKindFor('主歌')).toBe('verse');
+    expect(sectionKindFor('Estribillo')).toBe('chorus');
+    expect(sectionKindFor('Verso 2')).toBe('verse');
+    expect(sectionKindFor('Puente')).toBe('bridge');
+    expect(sectionKindFor('Refrain')).toBe('refrain');
+    expect(sectionKindFor('Couplet 1')).toBe('verse');
+    expect(sectionKindFor('Strophe')).toBe('verse');
+  });
+
+  it('matches repeats of a non-Latin heading', () => {
+    // The old key function stripped every non-Latin, non-Hangul character, so
+    // two different Japanese headings both reduced to '' and collided.
+    const { sections } = parseSheet(
+      text('[サビ]', 'aaa', 'bbb', '[Aメロ]', 'ccc', '[サビ]'),
+    );
+    expect(sections[2]?.repeatOf).toBe(sections[0]?.id);
+    // …and crucially, the verse must NOT be treated as a repeat of the chorus.
+    expect(sections[1]?.repeatOf).toBeUndefined();
+  });
+
+  it('handles a sheet that mixes languages', () => {
+    const { sections } = parseSheet(text('[Verse 1]', 'aaa', '[후렴]', 'bbb'));
+    expect(sections.map((s) => s.kind)).toEqual(['verse', 'chorus']);
+  });
+});
+
+describe('section spans on the timeline', () => {
+  it('runs each section up to the start of the next', () => {
+    const { lines, sections } = parseSheet(
+      text('[Verse 1]', 'aaa', 'bbb', '[Hook]', 'ccc'),
+    );
+    const timed = lines.map((line, i) => ({ ...line, startSec: [5, 8, 20][i] ?? null }));
+    const spans = sectionSpans(
+      { language: 'ko', audioKey: 'k', lines: timed, sections },
+      60,
+    );
+    expect(spans).toHaveLength(2);
+    expect(spans[0]).toMatchObject({ startSec: 5, endSec: 20 });
+    expect(spans[1]).toMatchObject({ startSec: 20, endSec: 60 });
+  });
+
+  it('leaves out sections with nothing timed yet', () => {
+    const { lines, sections } = parseSheet(text('[Verse 1]', 'aaa', '[Hook]', 'bbb'));
+    const timed = lines.map((line, i) => ({ ...line, startSec: i === 0 ? 5 : null }));
+    const spans = sectionSpans({ language: 'ko', audioKey: 'k', lines: timed, sections }, 60);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.section.kind).toBe('verse');
+  });
+
+  it('orders by time, not by position in the text', () => {
+    // A repeated chorus is written last but may be tapped in the middle.
+    const { lines, sections } = parseSheet(
+      text('[Hook]', 'aaa', '[Verse 1]', 'bbb', '[Hook]'),
+    );
+    const timed = lines.map((line, i) => ({ ...line, startSec: [30, 10, 50][i] ?? null }));
+    const spans = sectionSpans({ language: 'ko', audioKey: 'k', lines: timed, sections }, 60);
+    expect(spans.map((s) => s.startSec)).toEqual([10, 30, 50]);
   });
 });

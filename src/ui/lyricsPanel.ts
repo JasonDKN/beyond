@@ -332,7 +332,10 @@ export class LyricsPanelView {
         {
           class: 'lyrics__time',
           type: 'button',
-          title: line.startSec === null ? 'Not timed yet' : 'Play from here',
+          title:
+            line.startSec === null
+              ? 'Not timed yet — aim at this line and press T'
+              : `Play from ${formatClock(line.startSec)}`,
           onclick: () => {
             if (line.startSec !== null) this.#player.seek(line.startSec);
           },
@@ -362,10 +365,20 @@ export class LyricsPanelView {
         },
       }) as HTMLInputElement;
 
+      // Every action spelled out where the action is. Hover teaches this far
+      // better than a manual does, because it answers the question at the
+      // moment you have it.
+      const rowHint = [
+        line.startSec === null ? 'Not timed yet.' : `Timed at ${formatClock(line.startSec)}.`,
+        'Click to aim the next tap at this line.',
+        '↑ ↓ move the aim · T times it · R rewinds into it · Backspace clears it.',
+      ].join('\n');
+
       const row = el(
         'li',
         {
           class: `lyrics__line${line.startSec === null ? ' is-untimed' : ''}`,
+          title: rowHint,
           // Clicking anywhere on the row aims the next tap at it, without
           // moving the playhead — for when you already know where you are.
           onclick: (event: Event) => {
@@ -381,7 +394,8 @@ export class LyricsPanelView {
           {
             class: 'lyrics__retap',
             type: 'button',
-            title: 'Play into this line, then press T to re-time it',
+            title:
+              'Rewind 2.5s before this line and play (R)\nThen press T as the line arrives',
             onclick: () => this.#arm(index, { rewind: true }),
           },
           '⟲',
@@ -391,7 +405,7 @@ export class LyricsPanelView {
           {
             class: 'lyrics__clearline',
             type: 'button',
-            title: "Clear just this line's timing",
+            title: "Clear just this line's timing (Backspace)\nEvery other line is left alone",
             onclick: () => this.#clearLine(index),
           },
           '✕',

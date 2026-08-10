@@ -18,6 +18,7 @@ export interface TrackBarCallbacks {
   onOpenFile(): void;
   /** Save this track's work to a file on disk. */
   onSaveToFile(): void;
+  onToggleHelp(): void;
 }
 
 export class TrackBarView {
@@ -73,6 +74,16 @@ export class TrackBarView {
         'New song',
       ),
       this.#saveFileButton,
+      el(
+        'button',
+        {
+          class: 'trackbar__button trackbar__button--help',
+          type: 'button',
+          title: 'Keyboard shortcuts and how timing works',
+          onclick: () => callbacks.onToggleHelp(),
+        },
+        'Help',
+      ),
     );
   }
 

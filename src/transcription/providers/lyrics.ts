@@ -74,24 +74,122 @@ export function emptySheet(language: LanguageTag = 'ko'): LyricSheet {
   return { language, lines: [], audioKey: '', sections: [] };
 }
 
+/**
+ * Section headings, in the languages lyric sheets actually come in.
+ *
+ * K-pop sheets are routinely mixed: an English `[Verse 1]` next to a Korean
+ * `[후렴]`, sometimes both on the same page. Japanese sheets use サビ for the
+ * chorus and Aメロ/Bメロ where English would say verse and pre-chorus — terms
+ * with no English cognate at all, so recognising them cannot be done by
+ * transliteration.
+ *
+ * Order matters throughout: `pre-chorus` and `post-chorus` must be tested
+ * before `chorus`, since they contain it.
+ */
+const SECTION_PATTERNS: readonly { kind: SectionKind; pattern: RegExp }[] = [
+  {
+    kind: 'pre-chorus',
+    // 프리코러스 / 프리훅, Bメロ (the build into the chorus)
+    pattern: /pre[\s-]?(chorus|hook)|프리\s?(코러스|훅)|b\s?メロ|pré[\s-]?refrain/i,
+  },
+  {
+    kind: 'post-chorus',
+    pattern: /post[\s-]?(chorus|hook)|포스트\s?(코러스|훅)|落ちサビ/i,
+  },
+  {
+    kind: 'chorus',
+    // 후렴 (refrain), 훅, 코러스; サビ; 副歌; estribillo/coro; refrão/refren.
+    // English "refrain" is deliberately absent — it has its own kind below,
+    // and listing it here would shadow that rule. Its Romance cousins do not
+    // carry the same distinction, so they belong to the chorus.
+    pattern: /chorus|hook|후렴|훅|코러스|사비|サビ|副歌|estribillo|\bcoro\b|refrão|refren/i,
+  },
+  {
+    kind: 'verse',
+    // 절, 벌스, 버스; Aメロ; 主歌; couplet; strophe; verso
+    pattern: /verse|벌스|버스|(^|\W)절(\W|$)|a\s?メロ|主歌|couplet|strophe|verso|estrofa/i,
+  },
+  {
+    kind: 'bridge',
+    pattern: /bridge|브(릿|리)지|ブリッジ|桥段|橋段|puente|pont\b|brücke/i,
+  },
+  {
+    kind: 'intro',
+    // 간주 and 間奏 are interludes; grouped with intro as instrumental breaks.
+    pattern: /intro|인트로|도입|간주|イントロ|間奏|前奏|introducción/i,
+  },
+  {
+    kind: 'outro',
+    pattern: /outro|ending|아웃(트)?로|엔딩|アウトロ|尾奏|終わり|final/i,
+  },
+  { kind: 'refrain', pattern: /refrain|리프레인/i },
+];
+
 /** Work out what kind of part a section heading names. */
 export function sectionKindFor(label: string): SectionKind {
-  const text = label.toLowerCase();
-  // Pre-chorus before chorus, or "pre-chorus" matches the chorus rule first.
-  if (/pre[\s-]?(chorus|hook)/.test(text)) return 'pre-chorus';
-  if (/post[\s-]?(chorus|hook)/.test(text)) return 'post-chorus';
-  if (/chorus|hook/.test(text)) return 'chorus';
-  if (/verse/.test(text)) return 'verse';
-  if (/bridge/.test(text)) return 'bridge';
-  if (/refrain/.test(text)) return 'refrain';
-  if (/intro/.test(text)) return 'intro';
-  if (/outro|ending/.test(text)) return 'outro';
+  for (const { kind, pattern } of SECTION_PATTERNS) {
+    if (pattern.test(label)) return kind;
+  }
   return 'other';
 }
 
-/** Section headings are matched loosely on their name, so "Hook" == "hook 2". */
+/**
+ * Section headings are matched loosely on their name, so "Hook" == "hook 2"
+ * and a repeat can be recognised.
+ *
+ * Uses the Unicode letter class rather than an ASCII-and-Hangul range: the
+ * old version stripped every Japanese, Chinese and accented character, which
+ * reduced `[サビ]` to an empty string and made every Japanese heading collide
+ * with every other one.
+ */
 function sectionKey(label: string): string {
-  return label.toLowerCase().replace(/[^a-z가-힣]+/g, '');
+  return label.toLowerCase().replace(/[^\p{L}]+/gu, '');
+}
+
+export interface SectionSpan {
+  readonly section: LyricSection;
+  readonly startSec: number;
+  readonly endSec: number;
+  readonly lineCount: number;
+  readonly timedCount: number;
+}
+
+/**
+ * Where each section sits in the song.
+ *
+ * Derived from the timings you tapped rather than from anything guessed: a
+ * section begins at its first timed line and runs until the next section
+ * starts. Sections with nothing timed yet are left out, because a section with
+ * no position on the timeline is not something you can click to replay.
+ */
+export function sectionSpans(sheet: LyricSheet, durationSec: number): SectionSpan[] {
+  const sections = sheet.sections ?? [];
+  if (sections.length === 0) return [];
+
+  const spans = sections
+    .map((section) => {
+      const lines = sheet.lines.filter((line) => line.sectionId === section.id);
+      const timed = lines
+        .map((line) => line.startSec)
+        .filter((at): at is number => at !== null);
+      return {
+        section,
+        startSec: timed.length > 0 ? Math.min(...timed) : Number.NaN,
+        endSec: durationSec,
+        lineCount: lines.length,
+        timedCount: timed.length,
+      };
+    })
+    .filter((span) => Number.isFinite(span.startSec))
+    .sort((a, b) => a.startSec - b.startSec);
+
+  // Each section runs up to the next one. Ordering by time rather than by
+  // position in the text matters: a repeated chorus is written late in the
+  // sheet but may be tapped anywhere in the song.
+  return spans.map((span, index) => ({
+    ...span,
+    endSec: spans[index + 1]?.startSec ?? durationSec,
+  }));
 }
 
 export interface ParsedLyrics {

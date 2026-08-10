@@ -424,3 +424,114 @@
   grid-template-columns: 3.4rem minmax(0, 1.2fr) minmax(0, 1fr) 1.6rem 1.4rem;
   cursor: pointer;
 }
+
+/* --- Section bar --------------------------------------------------------- */
+
+/*
+ * The song's structure, directly under the waveform. Blocks are proportional
+ * to how long each part lasts, so this reads as a map of the track rather than
+ * a list of names — and any part is one click from playing.
+ *
+ * Belongs to the transport rather than to a view mode: all three modes need to
+ * jump around the song.
+ */
+.sections {
+  margin-top: var(--space-2);
+}
+
+.sections.is-hidden {
+  display: none;
+}
+
+/*
+ * Positioned, not packed. Each block sits where its part actually falls in the
+ * song, so the strip lines up with the waveform above it and the gap before
+ * the first timed line reads as what it is — a lead-in nobody has timed yet.
+ */
+.sections__track {
+  position: relative;
+  height: 1.9rem;
+}
+
+.sections__block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-soft);
+  border-top: 2px solid var(--ghost);
+  background: rgba(20, 26, 52, 0.6);
+  overflow: hidden;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.sections__block:hover {
+  transform: translateY(-1px);
+  background: rgba(30, 38, 70, 0.85);
+}
+
+.sections__label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sections__repeat {
+  font-size: 0.6rem;
+  color: var(--ghost);
+}
+
+/* Same colour language as the headings in the lyric sheet. */
+.sections__block.is-chorus {
+  border-top-color: var(--mint);
+}
+.sections__block.is-chorus .sections__label {
+  color: var(--mint);
+}
+.sections__block.is-verse {
+  border-top-color: var(--sky);
+}
+.sections__block.is-verse .sections__label {
+  color: var(--sky);
+}
+.sections__block.is-bridge {
+  border-top-color: var(--violet);
+}
+.sections__block.is-bridge .sections__label {
+  color: var(--violet);
+}
+.sections__block.is-pre-chorus,
+.sections__block.is-post-chorus {
+  border-top-color: rgba(140, 190, 255, 0.55);
+}
+.sections__block.is-intro,
+.sections__block.is-outro {
+  border-top-color: rgba(255, 184, 107, 0.6);
+}
+
+.sections__block.is-current {
+  background: rgba(124, 245, 213, 0.16);
+}
+
+.sections__block.is-looped {
+  outline: 1px solid rgba(124, 245, 213, 0.6);
+  outline-offset: -1px;
+}
+
+/* A part with lines still untimed is drawn provisional. */
+.sections__block.is-partial {
+  border-style: dashed;
+}
