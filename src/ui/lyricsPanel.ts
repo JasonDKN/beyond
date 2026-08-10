@@ -5,6 +5,7 @@ import {
   getSheet,
   parseSheet,
   setSheet,
+  sheetToText,
   suggestSections,
   type LyricLine,
   type LyricSection,
@@ -170,7 +171,11 @@ export class LyricsPanelView {
 
     const key = state.trackId ?? '';
     const sheet = getSheet();
-    const sheetText = sheet.lines.map((line) => line.text).join('\n');
+    // Compared against the sheet written back out *with* its headings. Using
+    // the bare line texts here meant a sheet with sections never matched the
+    // box, so this branch fired on every state change and quietly replaced
+    // what you typed with a headingless copy — taking the sections with it.
+    const sheetText = sheetToText(sheet);
 
     // Resync on a new track *or* whenever the sheet has been replaced beneath
     // us — opening a project file for the song already loaded changes the

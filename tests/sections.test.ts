@@ -3,6 +3,7 @@ import {
   parseSheet,
   sectionKindFor,
   sectionSpans,
+  sheetToText,
   suggestSections,
 } from '@/transcription/providers/lyrics';
 
@@ -198,5 +199,54 @@ describe('section spans on the timeline', () => {
     const timed = lines.map((line, i) => ({ ...line, startSec: [30, 10, 50][i] ?? null }));
     const spans = sectionSpans({ language: 'ko', audioKey: 'k', lines: timed, sections }, 60);
     expect(spans.map((s) => s.startSec)).toEqual([10, 30, 50]);
+  });
+});
+
+describe('the sheet survives editing', () => {
+  it('writes back out as the text it was parsed from', () => {
+    const raw = text('[Verse 1]', 'aaa', 'bbb', '[Hook]', 'ccc', '[Bridge]', 'ddd');
+    const { lines, sections } = parseSheet(raw);
+    expect(sheetToText({ language: 'ko', audioKey: 'k', lines, sections })).toBe(raw);
+  });
+
+  it('round-trips a sheet whose headings the box would otherwise lose', () => {
+    // The regression: the panel compared its textarea against the bare line
+    // texts, so a sheet with headings never matched and got overwritten.
+    const raw = text('[Verse 1]', 'aaa', '[후렴]', 'bbb');
+    const first = parseSheet(raw);
+    const sheet = { language: 'ko' as const, audioKey: 'k', ...first };
+    const again = parseSheet(sheetToText(sheet), sheet);
+    expect(again.sections.map((s) => s.label)).toEqual(['Verse 1', '후렴']);
+    expect(again.lines.map((l) => l.text)).toEqual(['aaa', 'bbb']);
+  });
+
+  it('keeps the words of a repeat when the sheet is written back out', () => {
+    const { lines, sections } = parseSheet(text('[Hook]', 'aaa', 'bbb', '[Verse]', 'ccc', '[Hook]'));
+    const out = sheetToText({ language: 'ko', audioKey: 'k', lines, sections });
+    // The second [Hook] now carries the words it copied, so re-parsing it
+    // yields the same sheet instead of an empty section.
+    expect(out).toBe(text('[Hook]', 'aaa', 'bbb', '[Verse]', 'ccc', '[Hook]', 'aaa', 'bbb'));
+    expect(parseSheet(out).lines).toHaveLength(5);
+  });
+
+  it('gives each occurrence of a repeated line back its own timing', () => {
+    // Was: only the first occurrence inherited, so re-parsing a timed sheet
+    // dropped every repeat's timings and shuffled the rest up.
+    const { lines, sections } = parseSheet(text('[Hook]', 'aaa', '[Verse]', 'bbb', '[Hook]'));
+    const timed = lines.map((line, i) => ({ ...line, startSec: [5, 12, 40][i] ?? null }));
+    const sheet = { language: 'ko' as const, audioKey: 'k', lines: timed, sections };
+
+    const again = parseSheet(sheetToText(sheet), sheet);
+    expect(again.lines.map((l) => l.startSec)).toEqual([5, 12, 40]);
+  });
+
+  it('does not stack a newly added repeat onto the first one', () => {
+    const { lines, sections } = parseSheet(text('[Hook]', 'aaa'));
+    const timed = lines.map((line) => ({ ...line, startSec: 5 }));
+    const sheet = { language: 'ko' as const, audioKey: 'k', lines: timed, sections };
+
+    // A second [Hook] appears that was never timed; it must not inherit 0:05.
+    const again = parseSheet(text('[Hook]', 'aaa', '[Hook]'), sheet);
+    expect(again.lines.map((l) => l.startSec)).toEqual([5, null]);
   });
 });

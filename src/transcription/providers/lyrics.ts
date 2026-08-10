@@ -208,10 +208,21 @@ export interface ParsedLyrics {
  * times.
  */
 export function parseSheet(raw: string, existing?: LyricSheet): ParsedLyrics {
-  const previous = new Map<string, number>();
+  /**
+   * Every occurrence of each line, in order — including the untimed ones.
+   *
+   * A repeated chorus has the same text in several places, so a plain
+   * text→time map cannot tell the second hook from the first. Keeping the
+   * occurrences in a queue, nulls and all, means the Nth occurrence of a line
+   * gets back the Nth time, which is exactly right whenever the structure has
+   * not changed and degrades sensibly when it has.
+   */
+  const previous = new Map<string, (number | null)[]>();
   const previousTranslations = new Map<string, string>();
   for (const line of existing?.lines ?? []) {
-    if (line.startSec !== null) previous.set(line.text, line.startSec);
+    const seen = previous.get(line.text);
+    if (seen) seen.push(line.startSec);
+    else previous.set(line.text, [line.startSec]);
     if (line.translation) previousTranslations.set(line.text, line.translation);
   }
 
@@ -223,19 +234,8 @@ export function parseSheet(raw: string, existing?: LyricSheet): ParsedLyrics {
   const wordsBySection = new Map<string, string[]>();
   let current: LyricSection | null = null;
 
-  /**
-   * Timings are carried across an edit by line text, but a repeated chorus has
-   * the *same* text in several places. Handing every repeat the first
-   * occurrence's time would stack the whole song at one moment, so each
-   * remembered time is consumed once and in order.
-   */
-  const used = new Map<string, number>();
-  const takeTime = (text: string): number | null => {
-    const seen = used.get(text) ?? 0;
-    used.set(text, seen + 1);
-    // Only the first occurrence inherits; later repeats start untimed.
-    return seen === 0 ? (previous.get(text) ?? null) : null;
-  };
+  /** Hand back each remembered time once, to the occurrence it belonged to. */
+  const takeTime = (text: string): number | null => previous.get(text)?.shift() ?? null;
 
   const addLine = (text: string): void => {
     const translation = previousTranslations.get(text);
@@ -294,6 +294,40 @@ export function parseSheet(raw: string, existing?: LyricSheet): ParsedLyrics {
   }
 
   return { lines, sections };
+}
+
+/**
+ * The sheet, written back out as the text you would have typed.
+ *
+ * The editing box needs this to know whether its contents still match the
+ * sheet. Comparing against the bare line texts — which is what it used to do —
+ * can never match a sheet that has headings, so the box looked permanently
+ * out of date and got overwritten with a headingless copy of itself. From
+ * there every later edit reparsed text whose structure had already been
+ * thrown away, and the sections vanished for good.
+ *
+ * Round-trips: `parseSheet(sheetToText(s))` reproduces `s`.
+ */
+export function sheetToText(sheet: LyricSheet): string {
+  const sections = sheet.sections ?? [];
+  if (sections.length === 0) return sheet.lines.map((line) => line.text).join('\n');
+
+  const out: string[] = [];
+  const byId = new Map<string, string[]>();
+  for (const section of sections) byId.set(section.id, []);
+
+  // Anything before the first heading has no section and stays at the top.
+  for (const line of sheet.lines) {
+    const bucket = line.sectionId === undefined ? undefined : byId.get(line.sectionId);
+    if (bucket) bucket.push(line.text);
+    else out.push(line.text);
+  }
+
+  for (const section of sections) {
+    out.push(`[${section.label}]`);
+    out.push(...(byId.get(section.id) ?? []));
+  }
+  return out.join('\n');
 }
 
 /** Where a section's lines should go, given the sections that follow it. */
