@@ -118,16 +118,63 @@
   color: var(--ghost);
 }
 
+/*
+ * Speed: a slider, not a menu.
+ *
+ * Wider than the zoom control because it spans only half an octave of tempo
+ * and every hundredth of it matters — the speed you can just keep up with is
+ * a specific number, and it moves as you get better at the passage.
+ */
 .transport__rate {
   appearance: none;
-  padding: 0.15rem 0.4rem;
+  width: 8.5rem;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, rgba(255, 184, 107, 0.5), rgba(124, 245, 213, 0.7));
+  cursor: pointer;
+}
+
+.transport__rate::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 0 12px rgba(124, 245, 213, 0.8);
+}
+
+.transport__rate::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+/* The exact figure, and a way back to full speed. */
+.transport__rate-value {
+  min-width: 3.1rem;
+  padding: 0.1rem 0.3rem;
   border-radius: var(--radius-sm);
-  border: var(--border-soft);
-  background: rgba(16, 20, 40, 0.85);
+  font-variant-numeric: tabular-nums;
   font-size: var(--step--1);
   letter-spacing: 0;
   text-transform: none;
+  color: var(--paper-dim);
+  text-align: right;
+}
+
+.transport__rate-value:hover {
   color: var(--paper);
+}
+
+/* Slowed down is a state worth seeing at a glance. */
+.transport__rate-value.is-slowed {
+  color: var(--mint);
+}
+
+.transport__label--rate {
+  gap: var(--space-2);
 }
 
 .transport__zoom {

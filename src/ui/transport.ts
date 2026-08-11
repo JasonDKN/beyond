@@ -9,7 +9,8 @@ export class TransportView {
   #player: Player;
   #playButton: HTMLButtonElement;
   #clock: HTMLElement;
-  #rate: HTMLSelectElement;
+  #rate: HTMLInputElement;
+  #rateReadout: HTMLButtonElement;
   #zoom: HTMLInputElement;
   #onZoom: (zoom: number) => void;
   #loopA: HTMLButtonElement;
@@ -93,19 +94,40 @@ export class TransportView {
 
     this.#clock = el('div', { class: 'transport__clock' }, '0:00 / 0:00');
 
-    this.#rate = el(
-      'select',
+    /*
+     * Speed, continuously.
+     *
+     * A handful of preset rates is fine for skimming and wrong for learning to
+     * sing something: the speed you can just about keep up with is a specific
+     * number, it sits between whatever two presets you were offered, and it
+     * moves as you get better. So this is a slider down to the hundredth, and
+     * it stops at 1× because nobody learning a song wants it faster than the
+     * record.
+     */
+    this.#rateReadout = el(
+      'button',
       {
-        class: 'transport__rate',
-        'aria-label': 'Playback speed',
-        onchange: () => {
-          this.#player.playbackRate = Number(this.#rate.value);
-        },
+        class: 'transport__rate-value',
+        type: 'button',
+        title: 'Back to full speed',
+        'aria-label': 'Reset speed to 1×',
+        onclick: () => this.#setRate(1),
       },
-      ...['0.5', '0.65', '0.8', '1', '1.25', '1.5'].map((value) =>
-        el('option', { value, selected: value === '1' }, `${value}×`),
-      ),
-    ) as HTMLSelectElement;
+      '1.00×',
+    ) as HTMLButtonElement;
+
+    this.#rate = el('input', {
+      class: 'transport__rate',
+      type: 'range',
+      min: String(MIN_RATE),
+      max: String(MAX_RATE),
+      step: '0.01',
+      value: '1',
+      'aria-label': 'Playback speed',
+      // Arrow keys move it by one hundredth, which is the whole point of the
+      // range — the global nudge shortcuts ignore a focused input.
+      oninput: () => this.#setRate(Number(this.#rate.value)),
+    }) as HTMLInputElement;
 
     // Volume. Stored across sessions, because the level that suits a quiet
     // vocal on headphones is not the one that suits laptop speakers, and
@@ -176,7 +198,13 @@ export class TransportView {
         'div',
         { class: 'transport__group transport__group--right' },
         el('span', { class: 'transport__volume-group' }, this.#volumeIcon, this.#volume),
-        el('label', { class: 'transport__label' }, 'Speed', this.#rate),
+        el(
+          'label',
+          { class: 'transport__label transport__label--rate' },
+          'Speed',
+          this.#rate,
+          this.#rateReadout,
+        ),
         el('label', { class: 'transport__label' }, 'Zoom', this.#zoom),
       ),
     );
@@ -228,6 +256,18 @@ export class TransportView {
     });
   }
 
+  /** Put the speed somewhere and say so, in one place. */
+  #setRate(rate: number): void {
+    const clamped = Math.min(MAX_RATE, Math.max(MIN_RATE, Math.round(rate * 100) / 100));
+    this.#player.playbackRate = clamped;
+    this.#rate.value = String(clamped);
+    // Always two decimals: a readout that shrinks from "0.85×" to "0.9×" as
+    // you drag makes the number jump around under your eyes.
+    this.#rateReadout.textContent = `${clamped.toFixed(2)}×`;
+    // Full speed is the normal state and should not look like a setting.
+    this.#rateReadout.classList.toggle('is-slowed', clamped !== 1);
+  }
+
   update(state: State): void {
     const playing = state.playing;
     this.#playButton.replaceChildren(
@@ -250,6 +290,13 @@ export class TransportView {
     this.element.classList.toggle('is-looping', looping);
   }
 }
+
+/**
+ * Half speed is about as slow as `preservesPitch` stays musical; below that a
+ * vocal turns to artefacts and stops being something you can copy.
+ */
+const MIN_RATE = 0.5;
+const MAX_RATE = 1;
 
 const VOLUME_KEY = 'beyond.volume';
 
