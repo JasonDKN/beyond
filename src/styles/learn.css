@@ -541,3 +541,54 @@
 .sections__block.is-partial {
   border-style: dashed;
 }
+
+/*
+ * The sound of a line, under the line.
+ *
+ * Timing a song you cannot read means waiting for a shape you have never
+ * heard. This puts the pronunciation where your eyes already are — under each
+ * syllable block for Korean and kana, under the whole word for Latin script,
+ * because their letters already carry most of the answer.
+ */
+.reading {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 0.6rem;
+}
+
+.reading__word {
+  display: inline-flex;
+  align-items: flex-end;
+  /* Syllable blocks of one word stay together; the gap between words is
+     wider, so the shape of the line survives. */
+  gap: 0 0.18rem;
+}
+
+.reading__unit {
+  display: inline-grid;
+  justify-items: center;
+  line-height: 1.15;
+}
+
+.reading__written {
+  /* Inherits the row's size, so the words still read as the words. */
+  white-space: nowrap;
+}
+
+.reading__ipa {
+  font-size: 0.62em;
+  letter-spacing: 0.01em;
+  color: rgba(124, 245, 213, 0.62);
+  white-space: nowrap;
+}
+
+/* An alphabetic word is one unit, so its reading sits under the whole word. */
+.reading__word.is-alphabetic .reading__ipa {
+  color: rgba(140, 190, 255, 0.6);
+}
+
+/* While a line is the next one to tap, its reading brightens with it. */
+.lyrics__line.is-next .reading__ipa {
+  color: rgba(124, 245, 213, 0.9);
+}

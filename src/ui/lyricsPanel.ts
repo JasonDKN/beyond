@@ -1,5 +1,6 @@
 import type { Player } from '@/audio/player';
 import type { State, Store } from '@/core/store';
+import type { LanguageTag } from '@/core/types';
 import { saveTrack } from '@/storage/library';
 import {
   getSheet,
@@ -13,6 +14,13 @@ import {
 
 /** How far before a line to rewind when you ask to re-time it. */
 const LEAD_IN_SEC = 2.5;
+import {
+  canRead,
+  loadReadings,
+  needsLatinEngine,
+  readLine,
+  type WordReading,
+} from '@/phonetics/readings';
 import { clear, el, formatClock } from './dom';
 
 /**
@@ -57,6 +65,17 @@ export class LyricsPanelView {
   /** The text this panel last turned into lines, for spotting outside edits. */
   #parsedText = '';
   #lastMode = '';
+  #latinLoaded = false;
+  #pending = false;
+  /** Whether an engine can say anything useful about this song's language. */
+  #readable = false;
+  /**
+   * Starts empty rather than at the default language, so the first update
+   * always counts as a change and actually loads the engine. Seeding it with
+   * 'ko' meant it matched the default on the very first pass, the load branch
+   * never ran, and no reading was ever fetched.
+   */
+  #language: LanguageTag | '' = '';
 
   constructor(store: Store, player: Player, callbacks: LyricsPanelCallbacks) {
     this.#store = store;
@@ -212,13 +231,56 @@ export class LyricsPanelView {
       this.#renderLines();
     }
 
+    const language = state.inputLanguage === 'auto' ? sheet.language : state.inputLanguage;
+    if (language !== this.#language) {
+      this.#language = language;
+      this.#readable = false;
+      this.#latinLoaded = false;
+    }
+    this.#ensureEngines();
+
     this.#tapButton.disabled = getSheet().lines.length === 0;
     if (state.mode !== this.#lastMode) {
       this.#lastMode = state.mode;
-      this.#panelTitle.textContent = state.mode === 'setup' ? 'Lyric sheet' : 'Lines to time';
+      // Setup is nothing but the sheet, so a collapse left over from another
+      // view would leave that screen empty with no way to reopen it — the
+      // Hide button is not there either.
+      if (state.mode === 'setup' && !this.#open) this.toggle();
       this.#updateSummary();
     }
     this.#highlightPlayhead(state.currentTime);
+  }
+
+  /**
+   * Fetch whatever the sheet needs to be readable, once, in the background.
+   *
+   * Checked on every update rather than only when the language changes,
+   * because the words arrive after the song does: a track opens empty, and
+   * the English in it does not exist until you paste it.
+   */
+  #ensureEngines(): void {
+    const language = this.#language;
+    if (language === '') return;
+
+    const latin = getSheet().lines.some((line) => needsLatinEngine(line.text, language));
+    if (this.#readable && (this.#latinLoaded || !latin)) return;
+    if (this.#pending) return;
+
+    this.#pending = true;
+    this.#latinLoaded = this.#latinLoaded || latin;
+    // Engines can have assets to fetch — the English lexicon is megabytes —
+    // so readings appear a beat after the words rather than holding up the
+    // panel. A purely Korean sheet never pays for the English one at all.
+    void loadReadings(language, latin)
+      .then(() => {
+        this.#pending = false;
+        if (this.#language !== language) return;
+        this.#readable = canRead(language);
+        this.#renderLines();
+      })
+      .catch(() => {
+        this.#pending = false;
+      });
   }
 
   // -------------------------------------------------------------------------
@@ -229,6 +291,7 @@ export class LyricsPanelView {
     this.#sections = sections;
     this.#parsedText = sheetToText({ ...sheet, lines, sections });
     this.#commit(lines);
+    this.#ensureEngines();
     // Resume tapping at the first line that still needs a time.
     const firstUntimed = lines.findIndex((line) => line.startSec === null);
     this.#cursor = firstUntimed < 0 ? lines.length : firstUntimed;
@@ -409,7 +472,13 @@ export class LyricsPanelView {
           },
         },
         time,
-        el('span', { class: 'lyrics__text' }, line.text),
+        this.#readable
+          ? el(
+              'span',
+              { class: 'lyrics__text' },
+              renderReading(readLine(line.text, this.#language || 'ko')),
+            )
+          : el('span', { class: 'lyrics__text' }, line.text),
         translation,
         el(
           'button',
@@ -548,4 +617,35 @@ export class LyricsPanelView {
       event.preventDefault();
     });
   }
+}
+
+/**
+ * Draw a line as written text with its sound underneath, unit by unit.
+ *
+ * Korean and Japanese get a reading under every syllable block, because that
+ * is the grain at which a sung line arrives. Latin-script words get one
+ * reading for the whole word — their letters already tell you most of it, and
+ * splitting "please" into six pieces would be noise rather than help.
+ */
+function renderReading(words: readonly WordReading[]): HTMLElement {
+  return el(
+    'span',
+    { class: 'reading' },
+    ...words.map((word) =>
+      el(
+        'span',
+        { class: `reading__word is-${word.script}` },
+        ...word.units.map((unit) =>
+          el(
+            'span',
+            { class: 'reading__unit' },
+            el('span', { class: 'reading__written' }, unit.text),
+            unit.ipa === ''
+              ? null
+              : el('span', { class: 'reading__ipa', lang: 'und-fonipa' }, unit.ipa),
+          ),
+        ),
+      ),
+    ),
+  );
 }
