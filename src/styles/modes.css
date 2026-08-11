@@ -258,32 +258,18 @@ body.mode-beatmap .lyrics__tap {
 
 /* --- Learning ------------------------------------------------------------- */
 /*
- * Practising is a reading job. The sheet collapses to a single bar you can
- * reopen to fix a line, and the score, grid and inspector take over.
+ * Practising is a reading job, and the score is the thing you read.
+ *
+ * The lyric sheet is gone entirely rather than collapsed to a bar you could
+ * reopen: it belongs to the two steps before this one, its words are already
+ * in the score in better form, and a header sitting above the score saying
+ * "Lyric sheet" is a label for something that is not there. Editing the words
+ * or their timing means going back to Setup or Beatmap, which is where those
+ * jobs live.
  */
 
-body.mode-learning .lyrics__body,
-body.mode-learning .lyrics__foot {
-  display: none;
-}
-
 body.mode-learning .lyrics {
-  padding: var(--space-2) var(--space-4);
-  margin-bottom: var(--space-4);
-}
-
-body.mode-learning .lyrics__title {
-  font-size: var(--step-0);
-}
-
-/* Reopening the sheet in Learning mode restores it in place. */
-body.mode-learning .lyrics:not(.is-collapsed) .lyrics__body,
-body.mode-learning .lyrics:not(.is-collapsed) .lyrics__foot {
-  display: grid;
-}
-
-body.mode-learning .lyrics:not(.is-collapsed) .lyrics__foot {
-  display: flex;
+  display: none;
 }
 
 /*
