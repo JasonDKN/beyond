@@ -283,7 +283,7 @@ export class PracticeView {
           {
             class: `practice__cell is-${timing.rating}${syllable.wordStart ? ' is-word-start' : ''}`,
             type: 'button',
-            title:
+            'data-tip':
               delta === null
                 ? `${syllable.glyph} — not heard`
                 : `${syllable.glyph} — ${delta > 0 ? '+' : ''}${Math.round(delta * 1000)} ms`,
@@ -319,7 +319,7 @@ export class PracticeView {
         {
           class: 'practice__take-select',
           type: 'button',
-          title: `From ${formatClock(entry.take.startedAtSec)} · ${entry.take.durationSec.toFixed(1)}s — click to hear it back`,
+          'data-tip': `From ${formatClock(entry.take.startedAtSec)} · ${entry.take.durationSec.toFixed(1)}s — click to hear it back`,
           onclick: () => {
             this.#current = entry;
             this.#render();
@@ -347,7 +347,7 @@ export class PracticeView {
           class: 'practice__take-delete',
           type: 'button',
           'aria-label': `Delete take ${this.#takes.length - index}`,
-          title: 'Delete this take',
+          'data-tip': 'Delete this take',
           onclick: () => this.#deleteTake(entry),
         },
         '✕',
@@ -390,7 +390,7 @@ export class PracticeView {
         'label',
         {
           class: 'practice__withtrack',
-          title: 'Play takes over the song, starting from where you hit record',
+          'data-tip': 'Play takes over the song, starting from where you hit record',
         },
         withTrack,
         el('span', {}, 'With track'),
@@ -413,7 +413,7 @@ export class PracticeView {
         {
           class: 'practice__clear',
           type: 'button',
-          title: 'Delete every take',
+          'data-tip': 'Delete every take',
           onclick: () => this.#clearTakes(),
         },
         'Clear all',

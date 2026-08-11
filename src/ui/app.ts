@@ -29,6 +29,7 @@ import { download } from '@/export';
 import { getSheet, setSheet } from '@/transcription/providers/lyrics';
 import { ACCEPT_ATTRIBUTE } from '@/audio/decoder';
 import { HelpView } from './help';
+import { TipsView } from './tips';
 import { LibraryView } from './library';
 import { PracticeView } from './practice';
 import { SectionBarView } from './sectionBar';
@@ -84,7 +85,8 @@ export function mountApp(root: HTMLElement): void {
     onPlay: () => void player.play(),
   });
 
-  const help = new HelpView(() => help.setOpen(false));
+  const tips = new TipsView();
+  const help = new HelpView(() => help.setOpen(false), tips);
 
   // Remembers the level to put back, so ducking the backing track under a
   // take never leaves the volume slider somewhere the user did not set it.
@@ -107,6 +109,11 @@ export function mountApp(root: HTMLElement): void {
   });
   const lyricsPanel = new LyricsPanelView(store, player, {
     onBuild: () => void buildAndStudy(),
+    onLyricsReady: () => {
+      const key = currentAudioKey();
+      if (key) saveModeFor(key, 'beatmap');
+      store.patch({ mode: 'beatmap' });
+    },
   });
 
   let currentFile: File | null = null;
@@ -436,6 +443,7 @@ export function mountApp(root: HTMLElement): void {
     stage,
     drawer.element,
     help.element,
+    tips.element,
     fileInput,
     projectInput,
     status.element,
@@ -486,11 +494,19 @@ export function mountApp(root: HTMLElement): void {
     sectionBar,
     help,
   ];
+  // The sheet lives outside the store, so mirror the one fact the mode switch
+  // needs before the views draw themselves.
   store.events.on('change', (state) => {
+    const hasLyrics = getSheet().lines.length > 0;
+    if (hasLyrics !== state.hasLyrics) {
+      store.patch({ hasLyrics });
+      return;
+    }
     for (const view of views) view.update(state);
     document.body.classList.toggle('has-audio', Boolean(state.audio));
     // One class drives the whole layout switch; the CSS does the rest.
-    document.body.classList.toggle('mode-annotation', state.mode === 'annotation');
+    document.body.classList.toggle('mode-setup', state.mode === 'setup');
+    document.body.classList.toggle('mode-beatmap', state.mode === 'beatmap');
     document.body.classList.toggle('mode-learning', state.mode === 'learning');
     document.body.classList.toggle('mode-practice', state.mode === 'practice');
   });
@@ -565,6 +581,15 @@ export function mountApp(root: HTMLElement): void {
   // --- keyboard ------------------------------------------------------------
   window.addEventListener('keydown', (event) => {
     const target = event.target as HTMLElement | null;
+    // Escape is the way out of anything, including out of a field. Gating it
+    // behind the same check as the letter keys meant that focusing a control
+    // inside a panel made Escape stop closing that panel.
+    if (event.key === 'Escape') {
+      if (help.isOpen) help.setOpen(false);
+      else if (store.state.libraryOpen) store.patch({ libraryOpen: false });
+      else store.patch({ selected: null });
+      return;
+    }
     if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return;
 
     switch (event.key) {
@@ -580,12 +605,6 @@ export function mountApp(root: HTMLElement): void {
         break;
       case '?':
         help.setOpen(!help.isOpen);
-        break;
-      case 'Escape':
-        // Dismiss whatever is most recently in front of you, outermost first.
-        if (help.isOpen) help.setOpen(false);
-        else if (store.state.libraryOpen) store.patch({ libraryOpen: false });
-        else store.patch({ selected: null });
         break;
       default:
         break;

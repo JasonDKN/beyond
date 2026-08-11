@@ -46,20 +46,112 @@
   cursor: not-allowed;
 }
 
-/* --- Annotation ----------------------------------------------------------- */
+/* --- Setup ---------------------------------------------------------------- */
 /*
- * Timing is an editing job. The waveform stays — you tap far more accurately
- * when you can see the vocal coming — and everything downstream of the score
- * gets out of the way so the sheet can take the whole lower half.
+ * One job: get the words in. Everything else — waveform, transport, the parts
+ * strip, the line list — belongs to steps that have not happened yet, and a
+ * control you cannot use yet is just something to wonder about. So the box
+ * takes the screen, and the only way onward is the button under it.
  */
 
-body.mode-annotation .score,
-body.mode-annotation .inspector,
-body.mode-annotation .grid {
+body.mode-setup .stage__staff,
+body.mode-setup .score,
+body.mode-setup .inspector,
+body.mode-setup .grid,
+body.mode-setup .lyrics__lines,
+body.mode-setup .lyrics__tap,
+body.mode-setup .lyrics__reset,
+body.mode-setup .lyrics__build,
+body.mode-setup .transport__follow {
   display: none;
 }
 
-body.mode-annotation .stage__score {
+body.mode-setup .stage {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+body.mode-setup .stage__score {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.mode-setup .lyrics {
+  height: 100%;
+}
+
+body.mode-setup .lyrics__body {
+  height: 100%;
+  min-height: 0;
+}
+
+body.mode-setup .lyrics__input {
+  height: 100%;
+  min-height: 40vh;
+  font-size: var(--step-0);
+  line-height: 1.7;
+}
+
+/* The one way onward, and it looks like it. */
+.lyrics__ready {
+  padding: 0.45rem 1.1rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--mint);
+  background: rgba(124, 245, 213, 0.12);
+  font-size: var(--step--1);
+  color: var(--mint);
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.lyrics__ready:hover:not(:disabled) {
+  background: var(--mint);
+  color: var(--ink-900);
+}
+
+.lyrics__ready:disabled {
+  opacity: 0.35;
+  border-color: rgba(140, 168, 232, 0.3);
+  color: var(--ghost);
+  background: none;
+}
+
+/* It belongs to Setup alone; Beatmap ends with "Build the score". */
+body:not(.mode-setup) .lyrics__ready {
+  display: none;
+}
+
+/* Setup has no score to control, and no timing to hide. */
+body.mode-setup .controls__layers,
+body.mode-setup .control--notation,
+body.mode-setup .control--export,
+body.mode-setup .control--toggle {
+  display: none;
+}
+
+body.mode-setup .lyrics__collapse {
+  display: none;
+}
+
+/* --- Beatmap -------------------------------------------------------------- */
+/*
+ * Timing is an editing job. The waveform stays — you tap far more accurately
+ * when you can see the vocal coming — and everything downstream of the score
+ * gets out of the way so the lines can take the whole lower half. The paste
+ * box has done its job by now and lives back in Setup.
+ */
+
+body.mode-beatmap .lyrics__input {
+  display: none;
+}
+
+body.mode-beatmap .score,
+body.mode-beatmap .inspector,
+body.mode-beatmap .grid {
+  display: none;
+}
+
+body.mode-beatmap .stage__score {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -72,11 +164,11 @@ body.mode-annotation .stage__score {
  * Miss either and the list silently expands to fit all its rows, never
  * overflows, and so never scrolls — which is exactly the failure this had.
  */
-body.mode-annotation .stage__score {
+body.mode-beatmap .stage__score {
   grid-template-rows: minmax(0, 1fr);
 }
 
-body.mode-annotation .stage__score-scroll {
+body.mode-beatmap .stage__score-scroll {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden; /* the line list scrolls, not the column */
@@ -84,21 +176,21 @@ body.mode-annotation .stage__score-scroll {
   min-height: 0;
 }
 
-body.mode-annotation .lyrics {
+body.mode-beatmap .lyrics {
   margin-bottom: 0;
   height: 100%;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-body.mode-annotation .lyrics__body {
+body.mode-beatmap .lyrics__body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
 }
 
 /* The list is the whole point here, so give it the room — and let it scroll. */
-body.mode-annotation .lyrics__lines {
+body.mode-beatmap .lyrics__lines {
   max-height: none;
   min-height: 0;
   overflow-y: auto;
@@ -113,25 +205,25 @@ body.mode-annotation .lyrics__lines {
  * shrink so the line list, which is the thing you are actually reading while
  * you tap, gets the room.
  */
-body.mode-annotation .staff__frame {
+body.mode-beatmap .staff__frame {
   height: clamp(88px, 13vh, 132px);
 }
 
-body.mode-annotation .lyrics__input {
+body.mode-beatmap .lyrics__input {
   max-height: 4.5rem;
   min-height: 2.6rem;
 }
 
 /* The syllable grid belongs to Learning; hiding it also reclaims its height. */
-body.mode-annotation .transport {
+body.mode-beatmap .transport {
   margin-top: var(--space-2);
 }
 
-body.mode-annotation .lyrics__line {
+body.mode-beatmap .lyrics__line {
   padding-block: 0.35rem;
 }
 
-body.mode-annotation .lyrics__text {
+body.mode-beatmap .lyrics__text {
   font-size: var(--step-1);
 }
 
@@ -140,26 +232,26 @@ body.mode-annotation .lyrics__text {
  * middle of the list — while tapping you are listening, not reading, and your
  * eyes should never have to hunt for where the highlight went.
  */
-body.mode-annotation .lyrics__line.is-next {
+body.mode-beatmap .lyrics__line.is-next {
   border-left-width: 3px;
   background: linear-gradient(90deg, rgba(124, 245, 213, 0.16), transparent 70%);
 }
 
-body.mode-annotation .lyrics__line.is-next .lyrics__text {
+body.mode-beatmap .lyrics__line.is-next .lyrics__text {
   color: var(--paper);
   font-size: var(--step-2);
 }
 
-body.mode-annotation .lyrics__line.is-next .lyrics__time {
+body.mode-beatmap .lyrics__line.is-next .lyrics__time {
   color: var(--mint);
 }
 
 /* Lines already timed recede, so the untimed remainder stands out. */
-body.mode-annotation .lyrics__line:not(.is-untimed):not(.is-next) .lyrics__text {
+body.mode-beatmap .lyrics__line:not(.is-untimed):not(.is-next) .lyrics__text {
   opacity: 0.55;
 }
 
-body.mode-annotation .lyrics__tap {
+body.mode-beatmap .lyrics__tap {
   padding: 0.6rem 1.6rem;
   font-size: var(--step-1);
 }
@@ -201,10 +293,10 @@ body.mode-learning .lyrics:not(.is-collapsed) .lyrics__foot {
  * them while you are timing a song just crowds the bar and makes the mode feel
  * less like a mode. Hiding them also stops the header wrapping onto two rows.
  */
-body.mode-annotation .controls__layers,
-body.mode-annotation .control--notation,
-body.mode-annotation .control--export,
-body.mode-annotation .control--toggle {
+body.mode-beatmap .controls__layers,
+body.mode-beatmap .control--notation,
+body.mode-beatmap .control--export,
+body.mode-beatmap .control--toggle {
   display: none;
 }
 

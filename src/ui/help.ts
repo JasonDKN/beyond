@@ -1,5 +1,6 @@
 import type { State } from '@/core/store';
 import { el } from './dom';
+import type { TipsView } from './tips';
 
 /**
  * The shortcuts, written down.
@@ -22,8 +23,8 @@ interface Group {
 
 const GROUPS: readonly Group[] = [
   {
-    title: 'Timing lines — Annotation',
-    note: 'Aim first, then tap. The armed line is the one with the mint edge.',
+    title: 'Timing lines — Beatmap',
+    note: 'Paste the words in Setup, then map them here. Aim first, then tap — the armed line is the one with the mint edge.',
     items: [
       { keys: ['Click a line'], what: 'Aim the next tap at it, without moving the playhead' },
       { keys: ['↑', '↓'], what: 'Move that aim up or down the sheet' },
@@ -64,7 +65,7 @@ export class HelpView {
   readonly element: HTMLElement;
   #open = false;
 
-  constructor(onClose: () => void) {
+  constructor(onClose: () => void, tips: TipsView) {
     this.element = el(
       'div',
       {
@@ -85,10 +86,17 @@ export class HelpView {
           el('h2', { class: 'help__title' }, 'Shortcuts'),
           el(
             'button',
-            { class: 'help__close', type: 'button', 'aria-label': 'Close', onclick: onClose },
+            {
+              class: 'help__close',
+              type: 'button',
+              'aria-label': 'Close',
+              'data-tip': 'Close this panel\nOr press `Esc`',
+              onclick: onClose,
+            },
             '✕',
           ),
         ),
+        settingRow(tips),
         el('div', { class: 'help__groups' }, ...GROUPS.map(renderGroup)),
       ),
     );
@@ -106,6 +114,39 @@ export class HelpView {
   update(_state: State): void {
     /* Nothing to react to — the shortcuts do not change. */
   }
+}
+
+/**
+ * The one setting Beyond has, kept where you go to learn the interface.
+ *
+ * Turning hovertips off does not silence them — it hands them back to the
+ * browser as ordinary `title` tooltips. Somebody who dislikes the styled panel
+ * still gets the explanation, in the shape their operating system draws.
+ */
+function settingRow(tips: TipsView): HTMLElement {
+  const input = el('input', {
+    type: 'checkbox',
+    role: 'switch',
+    'aria-label': 'Styled hovertips',
+    onchange: (event: Event) => tips.setEnabled((event.target as HTMLInputElement).checked),
+  }) as HTMLInputElement;
+  input.checked = tips.enabled;
+
+  return el(
+    'div',
+    { class: 'help__setting' },
+    el(
+      'div',
+      { class: 'help__setting-text' },
+      el('span', { class: 'help__setting-name' }, 'Hovertips'),
+      el(
+        'p',
+        { class: 'help__setting-note' },
+        'Explanations drawn in Beyond’s own style, with real keys. Turn this off to use your system’s plain tooltips instead.',
+      ),
+    ),
+    el('label', { class: 'switch' }, input, el('span', { class: 'switch__knob' })),
+  );
 }
 
 function renderGroup(group: Group): HTMLElement {

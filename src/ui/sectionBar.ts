@@ -84,10 +84,11 @@ export class SectionBarView {
           class: `sections__block is-${span.section.kind}`,
           type: 'button',
           style: `left: ${left.toFixed(3)}%; width: calc(${width.toFixed(3)}% - 2px)`,
-          title:
+          'data-tip':
             `${name} — ${formatClock(span.startSec)} to ${formatClock(span.endSec)}` +
             (artists.length > 0 ? `\n${artists.join(', ')}` : '') +
-            `\nClick to play from here · Shift-click to loop this part` +
+            `\nClick to play from here` +
+            `\n\`Shift\`-click to loop this part` +
             (untimed ? `\n${span.lineCount - span.timedCount} line(s) still untimed` : ''),
           onclick: (event: Event) => {
             // Shift turns a jump into a loop, which is how you drill one part

@@ -1,0 +1,166 @@
+/*
+ * Hovertips.
+ *
+ * One panel, reused. Positioned by transform from the top-left corner so
+ * moving it never triggers layout, and pointer-events are off so it can never
+ * end up between you and the thing you were reaching for.
+ */
+
+.tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  max-width: 22rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-md);
+  border: var(--border-soft);
+  border-top: 1px solid rgba(124, 245, 213, 0.35);
+  background: rgba(10, 13, 28, 0.97);
+  box-shadow: var(--shadow-lift);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  opacity: 0;
+  /* Starts a few pixels towards the element it belongs to, so it reads as
+     coming out of that thing rather than appearing over the page. */
+  transition:
+    opacity 120ms var(--ease-out),
+    translate 120ms var(--ease-out);
+  translate: 0 -3px;
+}
+
+.tip.is-open {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.tip.is-above {
+  border-top: var(--border-soft);
+  border-bottom: 1px solid rgba(124, 245, 213, 0.35);
+}
+
+.tip__title {
+  margin: 0;
+  font-size: var(--step--1);
+  line-height: 1.4;
+  color: var(--paper);
+}
+
+.tip__body {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(140, 168, 232, 0.14);
+}
+
+.tip__body.is-empty {
+  display: none;
+}
+
+.tip__line {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--ghost);
+}
+
+/* A key looks like a key. This is most of the reason to own the tooltip. */
+.tip__key {
+  display: inline-block;
+  min-width: 1.05rem;
+  padding: 0.02rem 0.3rem;
+  margin: 0 0.1rem;
+  border-radius: 4px;
+  border: var(--border-firm);
+  border-bottom-width: 2px;
+  background: rgba(6, 8, 20, 0.9);
+  font-family: var(--font-ui);
+  font-size: 0.66rem;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--paper);
+}
+
+/* --- The toggle, in the Help panel ---------------------------------------- */
+
+.help__setting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: var(--border-soft);
+  background: rgba(6, 8, 20, 0.45);
+}
+
+.help__setting-text {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.help__setting-name {
+  font-size: var(--step--1);
+  color: var(--paper);
+}
+
+.help__setting-note {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--ghost);
+}
+
+/* A switch, built from a checkbox so it stays keyboard- and screen-reader-shaped. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 2.4rem;
+  height: 1.3rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  background: rgba(6, 8, 20, 0.8);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch__knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  background: var(--ghost);
+  translate: 0 -50%;
+  transition:
+    translate var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+  pointer-events: none;
+}
+
+.switch:has(input:checked) {
+  background: rgba(124, 245, 213, 0.22);
+  border-color: rgba(124, 245, 213, 0.5);
+}
+
+.switch:has(input:checked) .switch__knob {
+  translate: 1.05rem -50%;
+  background: var(--mint);
+}
+
+.switch:has(input:focus-visible) {
+  outline: 2px solid rgba(124, 245, 213, 0.6);
+  outline-offset: 2px;
+}

@@ -12,15 +12,18 @@ import { DEFAULT_SINGING_OPTIONS, type SingingOptions } from '@/phonetics/singin
 export type Status = 'idle' | 'working' | 'ready' | 'error';
 
 /**
- * The two things you actually do with this app, made explicit.
+ * The four things you actually do with this app, in the order you do them.
  *
- * They want opposite layouts. Timing a song is a text task: you need to see
- * many lines at once and know which one is next. Practising it is a reading
- * task: you need one line large, in time, with its phonetics under it. Trying
- * to serve both from one screen is what made the follow-along behaviour feel
- * arbitrary — it was following in a layout built for editing.
+ * Each wants a different screen. Setup is a writing task — one big box and
+ * nothing else to look at. Beatmap is a timing task: many lines visible, the
+ * next one obvious, the waveform showing the vocal coming. Learning is a
+ * reading task: one line large and in time with its phonetics under it. And
+ * Practice is a recording task.
+ *
+ * Trying to serve two of these from one screen is what made the follow-along
+ * behaviour feel arbitrary — it was following in a layout built for editing.
  */
-export type ViewMode = 'annotation' | 'learning' | 'practice';
+export type ViewMode = 'setup' | 'beatmap' | 'learning' | 'practice';
 
 export interface WordRef {
   readonly lineIndex: number;
@@ -70,6 +73,13 @@ export interface State {
   /** The track drawer, over the workspace. */
   readonly libraryOpen: boolean;
   readonly mode: ViewMode;
+  /**
+   * Whether any lyrics have been pasted.
+   *
+   * Mirrored into the store because the lyric sheet lives outside it, and the
+   * mode switch has to know whether Beatmap has anything to tap.
+   */
+  readonly hasLyrics: boolean;
   /**
    * Whether the score scrolls itself to keep up with the music.
    *
@@ -138,7 +148,8 @@ export class Store {
     saveState: 'idle',
     savedAt: null,
     libraryOpen: false,
-    mode: 'annotation',
+    mode: 'setup',
+    hasLyrics: false,
     followScore: true,
     layers: {
       written: true,

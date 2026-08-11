@@ -200,7 +200,7 @@ export class InspectorView {
           {
             class: `segment ${phone.isVowel ? 'is-vowel' : 'is-consonant'}`,
             style: phone.isVowel ? `--vowel-hue:${vowelHue(phone.ipa)}` : '',
-            title: `${glyphs} — ${detail}${phone.native ? ` (${phone.native})` : ''}`,
+            'data-tip': `${glyphs} — ${detail}${phone.native ? ` (${phone.native})` : ''}`,
           },
           el('span', { class: 'segment__glyph', lang: 'und-fonipa' }, glyphs),
           el('span', { class: 'segment__label' }, phone.native ?? detail),

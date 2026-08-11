@@ -123,7 +123,7 @@ export class ScoreView {
             class: `score__word source-${word.source}`,
             type: 'button',
             'data-confidence': word.confidence.toFixed(2),
-            title: this.#tooltip(word),
+            'data-tip': this.#tooltip(word),
             onclick: () => {
               // Clicking a button focuses it, and focusing something near the
               // edge of the viewport makes the browser scroll it into view.
@@ -153,7 +153,7 @@ export class ScoreView {
           {
             class: 'score__timecode',
             type: 'button',
-            title: 'Play from here',
+            'data-tip': 'Play from here',
             onclick: () => {
               this.#suppressScrollPause();
               this.#callbacks.onSeek(line.startSec);

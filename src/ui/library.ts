@@ -91,7 +91,7 @@ export class LibraryView {
           {
             class: 'library__backup',
             type: 'button',
-            title: 'Download your lyrics, timings and translations as a file',
+            'data-tip': 'Download your lyrics, timings and translations as a file',
             onclick: () => void this.#backup(),
           },
           'Back up',
@@ -101,7 +101,7 @@ export class LibraryView {
           {
             class: 'library__backup',
             type: 'button',
-            title: 'Restore tracks from a backup file',
+            'data-tip': 'Restore tracks from a backup file',
             onclick: () => this.#restoreInput.click(),
           },
           'Restore',
@@ -130,7 +130,7 @@ export class LibraryView {
               {
                 class: 'library__newfile',
                 type: 'button',
-                title: 'Open a project file you saved to a folder',
+                'data-tip': 'Open a project file you saved to a folder',
                 onclick: () => this.#callbacks.onOpenProject?.(),
               },
               'Open project file…',
@@ -252,7 +252,7 @@ export class LibraryView {
         type: 'button',
         // Without the audio we cannot reopen it unaided; say so up front
         // rather than failing after the click.
-        title: track.hasAudio
+        'data-tip': track.hasAudio
           ? `Open ${track.title}`
           : `${track.title} — the audio is not stored, so you'll be asked for the file`,
         onclick: () => this.#callbacks.onOpen(track),
@@ -278,7 +278,7 @@ export class LibraryView {
             {
               class: 'library__action',
               type: 'button',
-              title: `Free ${formatBytes(track.bytes)} by removing the stored audio. Your timings are kept.`,
+              'data-tip': `Free ${formatBytes(track.bytes)} by removing the stored audio. Your timings are kept.`,
               onclick: () => void this.#dropAudio(track),
             },
             formatBytes(track.bytes),
@@ -289,7 +289,7 @@ export class LibraryView {
         {
           class: 'library__action library__action--delete',
           type: 'button',
-          title: `Delete ${track.title} and all its timings`,
+          'data-tip': `Delete ${track.title} and all its timings`,
           onclick: () => void this.#confirmDelete(track),
         },
         '✕',

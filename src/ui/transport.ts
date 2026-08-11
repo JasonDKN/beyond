@@ -38,7 +38,7 @@ export class TransportView {
       {
         class: 'transport__follow',
         type: 'button',
-        title: 'Scroll the score to keep up with the music',
+        'data-tip': 'Scroll the score to keep up with the music',
         onclick: () => this.#onResumeFollow(),
       },
       'Follow',
@@ -49,7 +49,7 @@ export class TransportView {
       {
         class: 'transport__loop-button',
         type: 'button',
-        title: 'Set the loop start here  [',
+        'data-tip': 'Set the loop start here  [',
         onclick: () => {
           this.#pendingA = this.#player.currentTime;
           this.#loopA.classList.add('is-set');
@@ -63,7 +63,7 @@ export class TransportView {
       {
         class: 'transport__loop-button',
         type: 'button',
-        title: 'Set the loop end here and start looping  ]',
+        'data-tip': 'Set the loop end here and start looping  ]',
         onclick: () => this.#player.setLoop(this.#pendingA ?? 0, this.#player.currentTime),
       },
       'B',
@@ -74,7 +74,7 @@ export class TransportView {
       {
         class: 'transport__loop-button transport__loop-button--clear',
         type: 'button',
-        title: 'Clear the loop  \\',
+        'data-tip': 'Clear the loop  \\',
         onclick: () => {
           this.#player.clearLoop();
           this.#pendingA = null;
@@ -109,7 +109,7 @@ export class TransportView {
       {
         class: 'transport__rate-value',
         type: 'button',
-        title: 'Back to full speed',
+        'data-tip': 'Back to full speed',
         'aria-label': 'Reset speed to 1×',
         onclick: () => this.#setRate(1),
       },
@@ -156,7 +156,7 @@ export class TransportView {
       {
         class: 'transport__mute',
         type: 'button',
-        title: 'Mute / unmute',
+        'data-tip': 'Mute / unmute',
         'aria-label': 'Mute or unmute',
         onclick: () => this.#toggleMute(),
       },
@@ -324,7 +324,7 @@ function iconButton(path: string, label: string, onClick: () => void): HTMLButto
     class: 'transport__button',
     type: 'button',
     'aria-label': label,
-    title: label,
+    'data-tip': label,
     onclick: onClick,
   });
   button.appendChild(svgIcon(path, label));

@@ -41,7 +41,7 @@ export class TrackBarView {
       {
         class: 'trackbar__button',
         type: 'button',
-        title: 'Switch to another saved track',
+        'data-tip': 'Switch to another saved track',
         onclick: () => callbacks.onToggleLibrary(),
       },
       'Tracks',
@@ -52,7 +52,7 @@ export class TrackBarView {
       {
         class: 'trackbar__button trackbar__button--file',
         type: 'button',
-        title: 'Save this track to a file in a folder of your choosing',
+        'data-tip': 'Save this track to a file in a folder of your choosing',
         onclick: () => callbacks.onSaveToFile(),
       },
       'Save to file',
@@ -68,7 +68,7 @@ export class TrackBarView {
         {
           class: 'trackbar__button trackbar__button--new',
           type: 'button',
-          title: 'Open an audio file that is not in your library yet',
+          'data-tip': 'Open an audio file that is not in your library yet',
           onclick: () => callbacks.onOpenFile(),
         },
         'New song',
@@ -79,7 +79,7 @@ export class TrackBarView {
         {
           class: 'trackbar__button trackbar__button--help',
           type: 'button',
-          title: 'Keyboard shortcuts and how timing works',
+          'data-tip': 'Shortcuts, and how the steps fit together\nAlso `?`',
           onclick: () => callbacks.onToggleHelp(),
         },
         'Help',

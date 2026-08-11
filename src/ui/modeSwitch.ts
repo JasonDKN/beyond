@@ -16,12 +16,15 @@ import { el } from './dom';
 const STORAGE_KEY = 'beyond.mode.';
 
 /** A mode you chose by hand for a particular song, which outranks the default. */
-const MODES: readonly ViewMode[] = ['annotation', 'learning', 'practice'];
+const MODES: readonly ViewMode[] = ['setup', 'beatmap', 'learning', 'practice'];
 
 export function savedModeFor(audioKey: string): ViewMode | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY + audioKey);
-    return MODES.includes(raw as ViewMode) ? (raw as ViewMode) : null;
+    // "Annotation" was pasting and timing in one screen. Whoever chose it was
+    // choosing the timing half, which is now Beatmap.
+    const migrated = raw === 'annotation' ? 'beatmap' : raw;
+    return MODES.includes(migrated as ViewMode) ? (migrated as ViewMode) : null;
   } catch {
     return null;
   }
@@ -47,9 +50,11 @@ export function defaultModeFor(options: {
   totalLines: number;
   timedLines: number;
 }): ViewMode {
-  if (options.totalLines === 0) return 'annotation';
-  if (options.timedLines < options.totalLines) return 'annotation';
-  return options.hasScore ? 'learning' : 'annotation';
+  // No words yet: the only thing to do is paste them.
+  if (options.totalLines === 0) return 'setup';
+  // Words but not all of them timed: there is a beatmap to finish.
+  if (options.timedLines < options.totalLines) return 'beatmap';
+  return options.hasScore ? 'learning' : 'beatmap';
 }
 
 export class ModeSwitchView {
@@ -69,7 +74,7 @@ export class ModeSwitchView {
         {
           class: 'modeswitch__button',
           type: 'button',
-          title: hint,
+          'data-tip': hint,
           'aria-pressed': 'false',
           onclick: () => this.#choose(mode),
         },
@@ -82,7 +87,8 @@ export class ModeSwitchView {
     this.element = el(
       'div',
       { class: 'modeswitch', role: 'group', 'aria-label': 'View mode' },
-      button('annotation', 'Annotation', 'Paste lyrics and tap the timing'),
+      button('setup', 'Setup', 'Paste the lyrics for this song'),
+      button('beatmap', 'Beatmap', 'Tap each line as it lands, and map the song out'),
       button('learning', 'Learning', 'Follow the score and read along'),
       button('practice', 'Practice', 'Record yourself and score your timing'),
     );
@@ -96,6 +102,9 @@ export class ModeSwitchView {
     }
     // Neither Learning nor Practice has anything to show until a score exists
     // — Practice grades against the grid the score is built from.
+    // Nothing to tap until there are words; nothing to read or record until
+    // there is a score.
+    this.#buttons.get('beatmap')?.toggleAttribute('disabled', !state.hasLyrics);
     this.#buttons.get('learning')?.toggleAttribute('disabled', state.score === null);
     this.#buttons.get('practice')?.toggleAttribute('disabled', state.score === null);
     this.element.classList.toggle('is-hidden', state.audio === null);

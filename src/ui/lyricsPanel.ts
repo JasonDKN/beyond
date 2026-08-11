@@ -29,6 +29,8 @@ import { clear, el, formatClock } from './dom';
 
 export interface LyricsPanelCallbacks {
   onBuild(): void;
+  /** The lyrics are in; go and time them. */
+  onLyricsReady(): void;
 }
 
 export class LyricsPanelView {
@@ -42,6 +44,8 @@ export class LyricsPanelView {
   #list: HTMLElement;
   #tapButton: HTMLButtonElement;
   #buildButton: HTMLButtonElement;
+  #readyButton: HTMLButtonElement;
+  #panelTitle: HTMLElement;
   #summary: HTMLElement;
   #rowNodes: HTMLElement[] = [];
 
@@ -52,6 +56,7 @@ export class LyricsPanelView {
   #open = true;
   /** The text this panel last turned into lines, for spotting outside edits. */
   #parsedText = '';
+  #lastMode = '';
 
   constructor(store: Store, player: Player, callbacks: LyricsPanelCallbacks) {
     this.#store = store;
@@ -90,6 +95,25 @@ export class LyricsPanelView {
       'Build the score',
     ) as HTMLButtonElement;
 
+    /*
+     * The end of Setup.
+     *
+     * Pasting into a box gives no sense of having finished, so this says what
+     * arrived and opens the next door in the same breath. It is the twin of
+     * "Build the score" at the end of Beatmap.
+     */
+    this.#readyButton = el(
+      'button',
+      {
+        class: 'lyrics__ready',
+        type: 'button',
+        'data-tip': 'Take these lyrics through to Beatmap\nWhere you tap each line as it lands',
+        onclick: () => this.#callbacks.onLyricsReady(),
+      },
+      'Lyrics are in — start the beatmap →',
+    ) as HTMLButtonElement;
+
+    this.#panelTitle = el('h2', { class: 'lyrics__title' }, 'Lyric sheet');
     this.#summary = el('p', { class: 'lyrics__summary' });
 
     this.element = el(
@@ -98,7 +122,7 @@ export class LyricsPanelView {
       el(
         'header',
         { class: 'lyrics__head' },
-        el('h2', { class: 'lyrics__title' }, 'Lyric sheet'),
+        this.#panelTitle,
         el(
           'button',
           {
@@ -120,6 +144,7 @@ export class LyricsPanelView {
           'Clear all timings',
         ),
         this.#summary,
+        this.#readyButton,
         this.#buildButton,
       ),
     );
@@ -188,6 +213,11 @@ export class LyricsPanelView {
     }
 
     this.#tapButton.disabled = getSheet().lines.length === 0;
+    if (state.mode !== this.#lastMode) {
+      this.#lastMode = state.mode;
+      this.#panelTitle.textContent = state.mode === 'setup' ? 'Lyric sheet' : 'Lines to time';
+      this.#updateSummary();
+    }
     this.#highlightPlayhead(state.currentTime);
   }
 
@@ -321,9 +351,9 @@ export class LyricsPanelView {
         {
           class: 'lyrics__time',
           type: 'button',
-          title:
+          'data-tip':
             line.startSec === null
-              ? 'Not timed yet — aim at this line and press T'
+              ? 'Not timed yet\nAim at this line and press `T`'
               : `Play from ${formatClock(line.startSec)}`,
           onclick: () => {
             if (line.startSec !== null) this.#player.seek(line.startSec);
@@ -358,16 +388,19 @@ export class LyricsPanelView {
       // better than a manual does, because it answers the question at the
       // moment you have it.
       const rowHint = [
-        line.startSec === null ? 'Not timed yet.' : `Timed at ${formatClock(line.startSec)}.`,
-        'Click to aim the next tap at this line.',
-        '↑ ↓ move the aim · T times it · R rewinds into it · Backspace clears it.',
+        line.startSec === null
+          ? 'Not timed yet'
+          : `Timed at ${formatClock(line.startSec)}`,
+        'Click to aim the next tap at this line',
+        '`↑` `↓` move the aim · `T` times it',
+        '`R` rewinds into it · `Backspace` clears it',
       ].join('\n');
 
       const row = el(
         'li',
         {
           class: `lyrics__line${line.startSec === null ? ' is-untimed' : ''}`,
-          title: rowHint,
+          'data-tip': rowHint,
           // Clicking anywhere on the row aims the next tap at it, without
           // moving the playhead — for when you already know where you are.
           onclick: (event: Event) => {
@@ -383,8 +416,8 @@ export class LyricsPanelView {
           {
             class: 'lyrics__retap',
             type: 'button',
-            title:
-              'Rewind 2.5s before this line and play (R)\nThen press T as the line arrives',
+            'data-tip':
+              'Rewind into this line and play\n2.5s of lead-in, then press `T` as it arrives\nSame as `R`',
             onclick: () => this.#arm(index, { rewind: true }),
           },
           '⟲',
@@ -394,7 +427,8 @@ export class LyricsPanelView {
           {
             class: 'lyrics__clearline',
             type: 'button',
-            title: "Clear just this line's timing (Backspace)\nEvery other line is left alone",
+            'data-tip':
+              "Clear just this line's timing\nEvery other line is left alone\nSame as `Backspace`",
             onclick: () => this.#clearLine(index),
           },
           '✕',
@@ -423,8 +457,14 @@ export class LyricsPanelView {
     }
     const parts = this.#sections.length;
     const structure = parts > 0 ? ` · ${parts} part${parts === 1 ? '' : 's'}` : '';
-    this.#summary.textContent = `${timed} of ${total} lines timed${structure}`;
+    // Setup counts what arrived; Beatmap counts what is timed. Same line, two
+    // different questions, depending on which one you are answering.
+    this.#summary.textContent =
+      this.#store.state.mode === 'setup'
+        ? `${total} line${total === 1 ? '' : 's'}${structure}`
+        : `${timed} of ${total} lines timed${structure}`;
     this.#buildButton.disabled = timed === 0;
+    this.#readyButton.disabled = total === 0;
   }
 
   /**
@@ -478,7 +518,7 @@ export class LyricsPanelView {
     window.addEventListener('keydown', (event) => {
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return;
-      if (this.#store.state.mode !== 'annotation') return;
+      if (this.#store.state.mode !== 'beatmap') return;
       const total = getSheet().lines.length;
       if (total === 0) return;
 

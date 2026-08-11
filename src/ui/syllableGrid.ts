@@ -72,7 +72,7 @@ export class SyllableGridView {
         {
           class: 'grid__cell',
           type: 'button',
-          title: `${entry.ipa} — ${entry.startSec.toFixed(2)}s`,
+          'data-tip': `${entry.ipa} — ${entry.startSec.toFixed(2)}s`,
           onclick: () => this.#onSeek(entry.startSec),
         },
         el('span', { class: 'grid__glyph' }, entry.glyph),
