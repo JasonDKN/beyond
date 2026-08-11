@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   countMarkerLines,
   isMarkerLine,
-  occurrenceOffset,
+  occurrenceOffsets,
+  placeLinesWithOverflow,
   parseLyrics,
   placeLines,
   sectionKindFor,
@@ -137,8 +138,18 @@ describe('where a section sits in the song', () => {
   });
 
   it('measures a repeat from the performance that was tapped', () => {
-    expect(occurrenceOffset(hook, 0)).toBe(0);
-    expect(occurrenceOffset(hook, 1)).toBe(105);
+    const { referenceIndex, offsets } = occurrenceOffsets(hook, [46]);
+    expect(referenceIndex).toBe(0);
+    expect(offsets).toEqual([0, 105]);
+  });
+
+  it('finds the tapped performance even when it is not the first', () => {
+    // Marking an earlier occurrence after tapping a later one used to shift
+    // every repeat off the wrong base: the line vanished from where it really
+    // is and appeared where nothing is sung.
+    const { referenceIndex, offsets } = occurrenceOffsets(hook, [151]);
+    expect(referenceIndex).toBe(1);
+    expect(offsets).toEqual([-105, 0]);
   });
 });
 
@@ -308,5 +319,112 @@ describe('stacking parts that overlap', () => {
 
   it('handles nothing at all', () => {
     expect(assignLanes([])).toEqual([]);
+  });
+});
+
+describe('a repeat only ever fills its own window', () => {
+  const hook: LyricSection = {
+    id: 'hook',
+    label: 'Hook',
+    kind: 'chorus',
+    occurrences: [occ('o1', 8, 26), occ('o2', 100, 118)],
+  };
+
+  it('places a repeat inside the block you marked', () => {
+    const sheet = sheetOf([{ text: 'Baby, oh, please', startSec: 15, sectionId: 'hook' }], [hook]);
+    expect(placeLines(sheet).map((p) => p.startSec)).toEqual([15, 107]);
+  });
+
+  it('refuses to put a replayed line outside its block, and says so', () => {
+    // A window shorter than the part it repeats. The tail would land past the
+    // end of the block, where nobody sings it — that is the shape of "words
+    // appearing where they do not belong", so it is reported, not placed.
+    const tight: LyricSection = { ...hook, occurrences: [occ('o1', 8, 26), occ('o2', 100, 104)] };
+    const sheet = sheetOf(
+      [
+        { text: 'hook one', startSec: 10, sectionId: 'hook' },
+        { text: 'hook two', startSec: 22, sectionId: 'hook' },
+      ],
+      [tight],
+    );
+    const { placed, overflowed } = placeLinesWithOverflow(sheet);
+    expect(placed.map((p) => `${p.text}@${p.startSec}`)).toEqual([
+      'hook one@10',
+      'hook two@22',
+      'hook one@102',
+    ]);
+    expect(overflowed).toHaveLength(1);
+    expect(overflowed[0]).toMatchObject({ text: 'hook two', wouldBeAtSec: 114 });
+  });
+
+  it('marks a replayed line as a repeat and a tapped one as not', () => {
+    const sheet = sheetOf([{ text: 'hook one', startSec: 15, sectionId: 'hook' }], [hook]);
+    expect(placeLines(sheet).map((p) => p.isRepeat)).toEqual([false, true]);
+  });
+
+  it('keeps a line that sits just before the block, as the tapped one did', () => {
+    // The reference window is drawn 2s after the first tap, so the repeat's
+    // line sits 2s before its block too. A rigid shift is symmetric, and
+    // dropping that would silently lose the first line of every repeat.
+    const tight: LyricSection = { ...hook, occurrences: [occ('o1', 12, 30), occ('o2', 100, 118)] };
+    const sheet = sheetOf([{ text: 'hook one', startSec: 10, sectionId: 'hook' }], [tight]);
+    expect(placeLines(sheet).map((p) => p.startSec)).toEqual([10, 98]);
+  });
+});
+
+describe('an old sheet whose parts were merely named alike', () => {
+  const legacy = {
+    language: 'ko',
+    audioKey: 'k',
+    lines: [
+      { text: 'verse one line A', startSec: 10, sectionId: 'v1' },
+      { text: 'verse one line B', startSec: 13, sectionId: 'v1' },
+      { text: 'verse two line C', startSec: 30, sectionId: 'v2' },
+      { text: 'verse two line D', startSec: 33, sectionId: 'v2' },
+    ],
+    sections: [
+      { id: 'v1', label: 'Verse 1', kind: 'verse' },
+      // The old parser matched headings on their letters alone, so this was
+      // flagged a repeat of Verse 1 despite having entirely different words.
+      { id: 'v2', label: 'Verse 2', kind: 'verse', repeatOf: 'v1' },
+    ],
+  } as unknown as LyricSheet;
+
+  it('keeps a section that has its own words, however it was labelled', () => {
+    const up = upgradeSheet(legacy);
+    expect(up.lines.map((l) => l.text)).toEqual([
+      'verse one line A',
+      'verse one line B',
+      'verse two line C',
+      'verse two line D',
+    ]);
+    expect(up.sections?.map((s) => s.label)).toEqual(['Verse 1', 'Verse 2']);
+  });
+
+  it('does not replay the first verse over the second', () => {
+    expect(placeLines(upgradeSheet(legacy)).map((p) => p.text)).toEqual([
+      'verse one line A',
+      'verse one line B',
+      'verse two line C',
+      'verse two line D',
+    ]);
+  });
+
+  it('still folds a genuine repeat, which carries a copy of the words', () => {
+    const withRepeat = {
+      ...legacy,
+      lines: [
+        { text: 'hook one', startSec: 10, sectionId: 'a' },
+        { text: 'hook one', startSec: 40, sectionId: 'c' },
+      ],
+      sections: [
+        { id: 'a', label: 'Hook', kind: 'chorus' },
+        { id: 'c', label: 'Hook', kind: 'chorus', repeatOf: 'a' },
+      ],
+    } as unknown as LyricSheet;
+    const up = upgradeSheet(withRepeat);
+    expect(up.sections).toHaveLength(1);
+    expect(up.sections?.[0]?.occurrences.map((o) => o.startSec)).toEqual([10, 40]);
+    expect(up.lines).toHaveLength(1);
   });
 });

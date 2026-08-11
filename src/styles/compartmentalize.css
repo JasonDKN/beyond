@@ -444,6 +444,17 @@ body.is-dragging-lines {
   color: var(--mint);
 }
 
+.compart__warn {
+  margin: var(--space-2) 0 0;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--amber, rgba(255, 184, 107, 0.8));
+  background: rgba(255, 184, 107, 0.08);
+  font-size: 0.66rem;
+  line-height: 1.45;
+  color: rgba(255, 208, 156, 0.92);
+}
+
 .compart__section-actions {
   display: flex;
   gap: var(--space-2);

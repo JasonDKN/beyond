@@ -355,3 +355,21 @@
   font-family: var(--font-ipa);
   color: var(--paper-dim);
 }
+
+/*
+ * A line that is here because a section was marked as returning, rather than
+ * because it was tapped here.
+ *
+ * Words turning up where you did not put them is alarming and — until this —
+ * indistinguishable from a bug. The mark says which is which, and the tooltip
+ * says where to go and change it.
+ */
+.score__line.is-repeat .score__time::after {
+  content: ' ↺';
+  color: var(--ghost);
+}
+
+.score__line.is-repeat {
+  border-left: 2px solid rgba(140, 168, 232, 0.28);
+  padding-left: var(--space-3);
+}

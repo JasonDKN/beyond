@@ -3,7 +3,10 @@ import type { State, Store } from '@/core/store';
 import {
   freshId,
   getSheet,
+  occurrenceOffsets,
   sectionKindFor,
+  sectionLineTimes,
+  sectionWarnings,
   type Artist,
   type LyricLine,
   type LyricSection,
@@ -565,6 +568,21 @@ export class CompartmentalizeView {
       occurrences.appendChild(this.#occurrenceRow(section, occurrence, index));
     });
 
+    // A repeat marked where the part does not actually return will replay its
+    // words into whatever else is there. That is one careless click away, and
+    // invisible afterwards unless something says so.
+    for (const warning of sectionWarnings(getSheet(), section)) {
+      occurrences.appendChild(
+        el(
+          'p',
+          { class: 'compart__warn' },
+          warning.kind === 'lands-in'
+            ? `Repeat ${warning.occurrenceIndex + 1} sits inside “${warning.otherLabel}” — its ${warning.count} line${warning.count === 1 ? '' : 's'} will play there too.`
+            : `Repeat ${warning.occurrenceIndex + 1} is too short: ${warning.count} line${warning.count === 1 ? '' : 's'} fall past its end and are left out. Move its end later.`,
+        ),
+      );
+    }
+
     return el(
       'article',
       {
@@ -680,21 +698,27 @@ export class CompartmentalizeView {
         '⤓',
       );
 
-    const offset = index === 0 ? 0 : occurrence.startSec - (section.occurrences[0]?.startSec ?? 0);
+    const { referenceIndex, offsets } = occurrenceOffsets(
+      section,
+      sectionLineTimes(getSheet(), section.id),
+    );
+    const isReference = index === referenceIndex;
+    const offset = offsets[index] ?? 0;
 
     return el(
       'div',
-      { class: `compart__occ${index === 0 ? ' is-reference' : ''}` },
+      { class: `compart__occ${isReference ? ' is-reference' : ''}` },
       el(
         'span',
         {
           class: 'compart__occ-tag',
-          title:
-            index === 0
-              ? 'The performance your tapped timings belong to'
-              : `Replays the tapped lines ${formatClock(offset)} later`,
+          title: isReference
+            ? 'The performance your tapped timings belong to'
+            : `Replays the tapped lines ${formatClock(Math.abs(offset))} ${offset < 0 ? 'earlier' : 'later'}`,
         },
-        index === 0 ? 'tapped' : `+${formatClock(offset)}`,
+        isReference
+          ? 'tapped'
+          : `${offset < 0 ? '−' : '+'}${formatClock(Math.abs(offset))}`,
       ),
       time('startSec', occurrence.startSec, 'Start of this occurrence (m:ss)'),
       grab('startSec'),

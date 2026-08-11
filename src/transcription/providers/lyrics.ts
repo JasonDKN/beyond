@@ -208,19 +208,149 @@ export function sectionSpans(sheet: LyricSheet, durationSec: number): SectionSpa
   return spans.sort((a, b) => a.startSec - b.startSec);
 }
 
+/** Slack around an occurrence's edges, for taps that sit just outside it. */
+const EDGE_GRACE_SEC = 0.5;
+
+/** Something about a section's placement worth telling you about. */
+export interface SectionWarning {
+  readonly kind: 'overflows' | 'lands-in';
+  readonly occurrenceIndex: number;
+  /** For 'lands-in', the section whose block the replayed words fall inside. */
+  readonly otherLabel?: string;
+  readonly count: number;
+}
+
 /**
- * How much later a repeat happens than the performance you actually tapped.
+ * What is wrong with how a section is placed, if anything.
  *
- * The first occurrence is the reference: its lines hold real, tapped times.
- * Every later occurrence is the same lines moved along by the distance between
- * the two starts, which is why one tap pass covers a hook that returns four
- * times.
+ * Two things are worth catching, and both have the same symptom — words
+ * turning up where nobody sings them.
+ *
+ * A repeat marked somewhere the part does not actually return will replay its
+ * words into whatever else is there; that is easy to do by accident, since
+ * marking a repeat takes one click at wherever the playhead was sitting.
+ * And a repeat whose window is shorter than the part it repeats drops its own
+ * tail, which looks like lines going missing.
+ *
+ * Neither is forbidden — parts do genuinely overlap — so these are reported
+ * rather than prevented.
  */
-export function occurrenceOffset(section: LyricSection, occurrenceIndex: number): number {
-  const base = section.occurrences[0];
-  const here = section.occurrences[occurrenceIndex];
-  if (!base || !here) return 0;
-  return here.startSec - base.startSec;
+export function sectionWarnings(sheet: LyricSheet, section: LyricSection): SectionWarning[] {
+  if (section.occurrences.length < 2) return [];
+
+  const { overflowed } = placeLinesWithOverflow(sheet);
+  const warnings: SectionWarning[] = [];
+
+  const overflowHere = new Map<number, number>();
+  for (const line of overflowed) {
+    if (line.sectionId !== section.id) continue;
+    overflowHere.set(line.occurrenceIndex, (overflowHere.get(line.occurrenceIndex) ?? 0) + 1);
+  }
+  for (const [occurrenceIndex, count] of overflowHere) {
+    warnings.push({ kind: 'overflows', occurrenceIndex, count });
+  }
+
+  // Where each *other* section is performed, so a repeat landing inside one
+  // can name it.
+  const elsewhere: { label: string; startSec: number; endSec: number }[] = [];
+  for (const other of sheet.sections ?? []) {
+    if (other.id === section.id) continue;
+    for (const occurrence of other.occurrences) {
+      elsewhere.push({ label: other.label, startSec: occurrence.startSec, endSec: occurrence.endSec });
+    }
+  }
+
+  const { referenceIndex } = occurrenceOffsets(section, sectionLineTimes(sheet, section.id));
+  section.occurrences.forEach((occurrence, index) => {
+    if (index === referenceIndex) return;
+    for (const other of elsewhere) {
+      const overlap =
+        Math.min(occurrence.endSec, other.endSec) - Math.max(occurrence.startSec, other.startSec);
+      if (overlap <= EDGE_GRACE_SEC) continue;
+      warnings.push({
+        kind: 'lands-in',
+        occurrenceIndex: index,
+        otherLabel: other.label,
+        count: sectionLineTimes(sheet, section.id).length,
+      });
+      break;
+    }
+  });
+
+  return warnings;
+}
+
+/** The tapped times of the lines placed in a section. */
+export function sectionLineTimes(sheet: LyricSheet, sectionId: string): number[] {
+  return sheet.lines
+    .filter((line) => line.sectionId === sectionId)
+    .map((line) => line.startSec)
+    .filter((at): at is number => at !== null);
+}
+
+/**
+ * Which occurrence the tapped timings actually belong to.
+ *
+ * This used to be assumed to be the first one, and that assumption is wrong
+ * whenever you mark an *earlier* performance after tapping a later one — the
+ * occurrences sort by time, so the one you tapped stops being first, and every
+ * repeat is then measured from the wrong place. The result was lines landing
+ * where nothing is sung and no line at all where the section really starts.
+ *
+ * The reference is the occurrence that actually contains the taps.
+ */
+export function referenceOccurrenceIndex(
+  section: LyricSection,
+  lineTimes: readonly number[],
+): number {
+  if (section.occurrences.length === 0) return -1;
+  if (lineTimes.length === 0) return 0;
+
+  let best = -1;
+  let bestInside = 0;
+  section.occurrences.forEach((occurrence, index) => {
+    const inside = lineTimes.filter(
+      (at) => at >= occurrence.startSec - EDGE_GRACE_SEC && at <= occurrence.endSec + EDGE_GRACE_SEC,
+    ).length;
+    if (inside > bestInside) {
+      bestInside = inside;
+      best = index;
+    }
+  });
+  if (best >= 0) return best;
+
+  // No window holds any tap — the song was timed before it was mapped out.
+  // Fall back to whichever occurrence begins nearest the first line.
+  const first = Math.min(...lineTimes);
+  let nearest = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  section.occurrences.forEach((occurrence, index) => {
+    const distance = Math.abs(occurrence.startSec - first);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = index;
+    }
+  });
+  return nearest;
+}
+
+/**
+ * How much later each performance happens than the one you tapped.
+ *
+ * The reference occurrence holds real, tapped times. Every other occurrence is
+ * the same lines moved along by the distance between the two starts, which is
+ * why one tap pass covers a hook that returns four times.
+ */
+export function occurrenceOffsets(
+  section: LyricSection,
+  lineTimes: readonly number[],
+): { referenceIndex: number; offsets: number[] } {
+  const referenceIndex = referenceOccurrenceIndex(section, lineTimes);
+  const base = section.occurrences[referenceIndex]?.startSec ?? 0;
+  return {
+    referenceIndex,
+    offsets: section.occurrences.map((occurrence) => occurrence.startSec - base),
+  };
 }
 
 /** A line placed at one particular moment in the song. */
@@ -232,6 +362,16 @@ export interface PlacedLine {
   /** Index into `sheet.lines` — the line this came from. */
   readonly sourceIndex: number;
   readonly occurrenceIndex: number;
+  /** True when this is a repeat replayed from elsewhere, not a tap. */
+  readonly isRepeat: boolean;
+}
+
+/** A line a repeat could not place, because it fell outside the marked window. */
+export interface OverflowedLine {
+  readonly sectionId: string;
+  readonly occurrenceIndex: number;
+  readonly text: string;
+  readonly wouldBeAtSec: number;
 }
 
 /**
@@ -242,19 +382,48 @@ export interface PlacedLine {
  * without you having typed or tapped the chorus four times.
  */
 export function placeLines(sheet: LyricSheet): PlacedLine[] {
+  return placeLinesWithOverflow(sheet).placed;
+}
+
+/**
+ * The same, plus whatever a repeat could not fit.
+ *
+ * A repeat may only put lines inside the window you marked for it. That rule
+ * is the whole safeguard against the thing it is easy to do by accident:
+ * mark a hook as returning somewhere it does not, and have its words appear
+ * in the middle of a verse where nobody sings them. If a replayed line would
+ * land outside its own block it is not placed at all — and it is reported, so
+ * the interface can say the window is too short rather than quietly losing it.
+ */
+export function placeLinesWithOverflow(sheet: LyricSheet): {
+  placed: PlacedLine[];
+  overflowed: OverflowedLine[];
+} {
   const sections = new Map((sheet.sections ?? []).map((section) => [section.id, section]));
   const placed: PlacedLine[] = [];
+  const overflowed: OverflowedLine[] = [];
+
+  /** Worked out once per section, not once per line. */
+  const timingCache = new Map<string, { referenceIndex: number; offsets: number[] }>();
+  const timingFor = (section: LyricSection) => {
+    const cached = timingCache.get(section.id);
+    if (cached) return cached;
+    const computed = occurrenceOffsets(section, sectionLineTimes(sheet, section.id));
+    timingCache.set(section.id, computed);
+    return computed;
+  };
 
   sheet.lines.forEach((line, sourceIndex) => {
     if (line.startSec === null) return;
     const section = line.sectionId === undefined ? undefined : sections.get(line.sectionId);
     const artistId = line.artistId ?? section?.artistId;
 
-    const at = (startSec: number, occurrenceIndex: number): PlacedLine => ({
+    const at = (startSec: number, occurrenceIndex: number, isRepeat: boolean): PlacedLine => ({
       text: line.text,
       startSec,
       sourceIndex,
       occurrenceIndex,
+      isRepeat,
       ...(line.translation === undefined ? {} : { translation: line.translation }),
       ...(artistId === undefined ? {} : { artistId }),
     });
@@ -262,16 +431,44 @@ export function placeLines(sheet: LyricSheet): PlacedLine[] {
     // No section, or a section performed once: the line sits where it was
     // tapped and nothing is duplicated.
     if (!section || section.occurrences.length < 2) {
-      placed.push(at(line.startSec, 0));
+      placed.push(at(line.startSec, 0, false));
       return;
     }
 
-    section.occurrences.forEach((_occurrence, index) => {
-      placed.push(at(line.startSec! + occurrenceOffset(section, index), index));
+    const { referenceIndex, offsets } = timingFor(section);
+
+    section.occurrences.forEach((occurrence, index) => {
+      // The performance you tapped keeps its literal times, whatever window
+      // you drew around it — the taps are the ground truth there.
+      if (index === referenceIndex) {
+        placed.push(at(line.startSec!, index, false));
+        return;
+      }
+
+      const startSec = line.startSec! + (offsets[index] ?? 0);
+      /*
+       * Only the end is a real constraint.
+       *
+       * A repeat is a rigid shift, so a line that sat just before the
+       * reference window's start sits just before this one's too — symmetric,
+       * consistent, and not worth policing. Running past the end is different:
+       * it means the window is shorter than the part it repeats, and the tail
+       * would land in whatever comes next.
+       */
+      if (startSec > occurrence.endSec + EDGE_GRACE_SEC) {
+        overflowed.push({
+          sectionId: section.id,
+          occurrenceIndex: index,
+          text: line.text,
+          wouldBeAtSec: startSec,
+        });
+        return;
+      }
+      placed.push(at(startSec, index, true));
     });
   });
 
-  return placed.sort((a, b) => a.startSec - b.startSec);
+  return { placed: placed.sort((a, b) => a.startSec - b.startSec), overflowed };
 }
 
 /** Text in brackets is a marker someone typed, not something to sing. */
@@ -400,6 +597,10 @@ export function upgradeSheet(sheet: LyricSheet): LyricSheet {
     };
   };
 
+  /** The words of a section, in order. */
+  const wordsOf = (sectionId: string): string[] =>
+    sheet.lines.filter((line) => line.sectionId === sectionId).map((line) => line.text);
+
   const kept: LyricSection[] = [];
   const byId = new Map<string, LyricSection>();
   /** Repeat section id → the section it folds into. */
@@ -410,7 +611,25 @@ export function upgradeSheet(sheet: LyricSheet): LyricSheet {
     const host = target === null ? undefined : byId.get(target);
     const window = windowFor(section.id);
 
-    if (host) {
+    /*
+     * Only fold a repeat that really is one.
+     *
+     * The old parser matched headings on their letters alone, so "Verse 2" was
+     * recorded as a repeat of "Verse 1" — harmless then, because a section
+     * with its own words kept them. Folding on that flag alone is not
+     * harmless: it deletes the second verse and replays the first one in its
+     * place, which is words appearing where nobody sings them and words
+     * vanishing from where they belong.
+     *
+     * A real repeat carries a copy of the host's words, or none at all.
+     */
+    const ownWords = wordsOf(section.id);
+    const hostWords = host ? wordsOf(host.id) : [];
+    const isCopy =
+      ownWords.length === 0 ||
+      (ownWords.length === hostWords.length && ownWords.every((w, i) => w === hostWords[i]));
+
+    if (host && isCopy) {
       folded.set(section.id, host.id);
       if (window) {
         const merged: LyricSection = {
@@ -510,6 +729,7 @@ class LyricSheetProvider implements TranscriptionProvider {
         startSec: line.startSec,
         endSec,
         ...(line.translation ? { translation: line.translation } : {}),
+        ...(line.isRepeat ? { isRepeat: true } : {}),
         // Within a line, words are spaced by character count. Korean is
         // syllable-timed, so this is a better approximation there than it is
         // for a stress-timed language like English.
