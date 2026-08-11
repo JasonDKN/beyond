@@ -147,17 +147,7 @@ export class ScoreView {
 
       const lineNode = el(
         'section',
-        {
-          class: `score__line${line.isRepeat ? ' is-repeat' : ''}`,
-          role: 'listitem',
-          'data-line': String(lineIndex),
-          ...(line.isRepeat
-            ? {
-                title:
-                  'A repeat — these words come from the section marked as returning here.\nEdit it in Compartmentalize if it does not belong.',
-              }
-            : {}),
-        },
+        { class: 'score__line', role: 'listitem', 'data-line': String(lineIndex) },
         el(
           'button',
           {

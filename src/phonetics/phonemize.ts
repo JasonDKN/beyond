@@ -106,7 +106,6 @@ function buildLine(segment: TranscriptSegment, words: PhoneticWord[]): PhoneticL
     words,
     // A translation supplied with the source text rides along untouched.
     ...(segment.translation ? { translation: segment.translation } : {}),
-    ...(segment.isRepeat ? { isRepeat: true } : {}),
   };
 }
 

@@ -62,15 +62,6 @@ export interface TranscriptSegment {
   readonly words: readonly TranscriptWord[];
   /** A translation of this line, when the source supplied one. */
   readonly translation?: string;
-  /**
-   * True when this line is a repeat replayed from elsewhere rather than one
-   * that was transcribed or tapped in place.
-   *
-   * Carried through to the score so a generated line can be told apart from a
-   * real one — words appearing where you did not put them is alarming, and
-   * indistinguishable from a bug unless the interface says which is which.
-   */
-  readonly isRepeat?: boolean;
 }
 
 export interface Transcript {
@@ -172,8 +163,6 @@ export interface PhoneticLine {
   readonly words: readonly PhoneticWord[];
   /** Optional translation of the line into the chosen output language. */
   readonly translation?: string;
-  /** True when this line is a repeat replayed from another part of the song. */
-  readonly isRepeat?: boolean;
 }
 
 export interface PhoneticScore {

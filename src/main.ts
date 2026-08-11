@@ -11,7 +11,6 @@ import '@/styles/modes.css';
 import '@/styles/library.css';
 import '@/styles/trackbar.css';
 import '@/styles/practice.css';
-import '@/styles/compartmentalize.css';
 import { mountApp } from '@/ui/app';
 
 const root = document.querySelector<HTMLElement>('#app');
