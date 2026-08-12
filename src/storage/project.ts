@@ -16,7 +16,7 @@ import { saveTrack, type TrackRecord } from './library';
  * have. On opening a project the audio is found in the library by fingerprint,
  * or asked for once and then cached, after which it opens in a click.
  *
- * A travel pack is the same file with the song inside it.
+ * A commit is the same file with the song inside it.
  *
  * That exception exists for one situation: you built a fortnight of work on a
  * machine you are about to leave behind. The fingerprint that normally
@@ -27,14 +27,14 @@ import { saveTrack, type TrackRecord } from './library';
  *
  * The audio rides as base64, which costs a third more bytes than the raw file
  * and saves writing a zip container and its reader. For one song that trade is
- * obviously right; it is why packs are per song rather than per library.
+ * obviously right; it is why commits are per song rather than per library.
  */
 
 export const PROJECT_EXTENSION = '.beyond.json';
-export const PACK_EXTENSION = '.beyond-pack.json';
+export const COMMIT_EXTENSION = '.beyond-commit.json';
 
 /** Audio carried inside a project file, for moving a song between devices. */
-interface PackedAudio {
+interface EmbeddedAudio {
   readonly fileName: string;
   readonly mimeType: string;
   readonly bytes: number;
@@ -47,7 +47,7 @@ interface ProjectFile {
   /** 1 is work only; 2 may also carry the audio. Both still open. */
   readonly version: 1 | 2;
   readonly savedAt: string;
-  readonly audio?: PackedAudio;
+  readonly audio?: EmbeddedAudio;
   readonly track: {
     readonly id: string;
     readonly title: string;
@@ -61,7 +61,7 @@ interface ProjectFile {
   };
 }
 
-export function serializeProject(record: TrackRecord, audio?: PackedAudio): string {
+export function serializeProject(record: TrackRecord, audio?: EmbeddedAudio): string {
   const project: ProjectFile = {
     format: 'beyond-project',
     version: audio ? 2 : 1,
@@ -84,7 +84,7 @@ export function serializeProject(record: TrackRecord, audio?: PackedAudio): stri
 
 export interface OpenedProject {
   readonly track: ProjectFile['track'];
-  /** Present when the file was a travel pack. */
+  /** Present when the file was a commit rather than a plain project. */
   readonly audio: Blob | null;
   readonly audioFileName: string | null;
 }
@@ -101,7 +101,8 @@ export function parseProject(json: string): OpenedProject {
     throw new Error('That does not look like a Beyond project file.');
   }
 
-  // A version 1 file has no audio and never did; that is not a fault.
+  // A version 1 file has no audio and never did; that is not a fault. Files
+  // written before this was called a commit still open, whatever they are named.
   const packed = project.audio;
   if (!packed?.data) {
     return { track: project.track, audio: null, audioFileName: null };
@@ -120,8 +121,8 @@ export function parseProject(json: string): OpenedProject {
   }
 }
 
-/** Wrap a file up so it can travel inside a project. */
-export async function packAudio(blob: Blob, fileName: string): Promise<PackedAudio> {
+/** Wrap a file up so it can travel inside a commit. */
+export async function embedAudio(blob: Blob, fileName: string): Promise<EmbeddedAudio> {
   return {
     fileName,
     mimeType: blob.type || 'audio/mpeg',
@@ -130,7 +131,7 @@ export async function packAudio(blob: Blob, fileName: string): Promise<PackedAud
   };
 }
 
-function decodeAudio(packed: PackedAudio): Blob {
+function decodeAudio(packed: EmbeddedAudio): Blob {
   const binary = atob(packed.data);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
@@ -156,10 +157,10 @@ async function toBase64(blob: Blob): Promise<string> {
   return comma < 0 ? '' : dataUrl.slice(comma + 1);
 }
 
-/** A recognisable filename for a pack. */
-export function packFileName(title: string): string {
+/** A recognisable filename for a commit. */
+export function commitFileName(title: string): string {
   const safe = title.replace(/[^\w\-. ]+/g, '').trim() || 'track';
-  return `${safe}${PACK_EXTENSION}`;
+  return `${safe}${COMMIT_EXTENSION}`;
 }
 
 /** A safe, recognisable filename for a track. */

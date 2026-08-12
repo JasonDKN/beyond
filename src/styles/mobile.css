@@ -199,6 +199,18 @@
     min-width: 2.2rem;
   }
 
+  /* Both ways in, full width and stacked — a phone is where the second one
+     actually matters. */
+  .dropzone__actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .dropzone__button {
+    width: 100%;
+    justify-content: center;
+  }
+
   /* --- Setup ------------------------------------------------------------- */
 
   body.mode-setup .lyrics__input {

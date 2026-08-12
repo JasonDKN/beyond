@@ -303,6 +303,36 @@
   box-shadow: 0 12px 32px -18px rgba(124, 245, 213, 0.9);
 }
 
+/*
+ * Two ways in, side by side.
+ *
+ * The second one used to not exist at all, which made arriving on a new
+ * device a dead end: the only button asked for an audio file, and what you
+ * had was a commit. It is quieter than "choose a file" because most sessions
+ * start with a song — but it is on the first screen, which is the only place
+ * it is any use.
+ */
+.dropzone__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.dropzone__button--commit {
+  border-color: rgba(140, 168, 232, 0.4);
+  background: rgba(140, 168, 232, 0.08);
+  color: var(--paper-dim);
+}
+
+.dropzone__button--commit:hover {
+  border-color: rgba(140, 168, 232, 0.85);
+  box-shadow: 0 12px 32px -18px rgba(140, 168, 232, 0.9);
+  color: var(--paper);
+}
+
 .dropzone__note {
   font-size: var(--step--1);
   color: var(--ghost);

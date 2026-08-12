@@ -11,7 +11,7 @@ import {
   listTracks,
   type TrackSummary,
 } from '@/storage/library';
-import { packAudio, packFileName, serializeProject } from '@/storage/project';
+import { commitFileName, embedAudio, serializeProject } from '@/storage/project';
 import { download } from '@/export';
 import { clear, el, formatClock } from './dom';
 
@@ -133,10 +133,10 @@ export class LibraryView {
               {
                 class: 'library__newfile',
                 type: 'button',
-                'data-tip': 'Open a project file you saved to a folder',
+                'data-tip': 'Open a commit, or a project file you saved to a folder',
                 onclick: () => this.#callbacks.onOpenProject?.(),
               },
-              'Open project file…',
+              'Open a commit…',
             ),
             el(
               'button',
@@ -275,20 +275,20 @@ export class LibraryView {
     const actions = el(
       'div',
       { class: 'library__actions' },
-      // A pack is only worth offering when there is a song to put in it.
+      // A commit is only worth offering when there is a song to put in it.
       track.hasAudio
         ? el(
             'button',
             {
-              class: 'library__action library__action--pack',
+              class: 'library__action library__action--commit',
               type: 'button',
               'data-tip':
-                `Pack ${track.title} for another device\n` +
+                `Commit ${track.title} and take it with you\n` +
                 'One file holding the words, timings and the song itself — ' +
                 'open it on your phone and everything is there',
-              onclick: () => void this.#pack(track),
+              onclick: () => void this.#commit(track),
             },
-            'Pack',
+            'Commit',
           )
         : null,
       track.hasAudio
@@ -323,23 +323,25 @@ export class LibraryView {
    *
    * The normal project file leaves the audio out, because the fingerprint
    * finds it again on a machine that already has it. A device you have never
-   * opened this song on cannot do that, so a pack carries the song along —
+   * opened this song on cannot do that, so a commit carries the song along —
    * which is the whole difference between arriving with your work and
    * arriving with a file that asks you for an MP3 you left at home.
    */
-  async #pack(track: TrackSummary): Promise<void> {
-    this.#summary.textContent = `Packing ${track.title}…`;
+  async #commit(track: TrackSummary): Promise<void> {
+    this.#summary.textContent = `Committing ${track.title}…`;
     try {
       const [record, blob] = await Promise.all([getTrack(track.id), getTrackAudio(track.id)]);
       if (!record || !blob) {
-        this.#summary.textContent = 'That track has no stored audio to pack.';
+        this.#summary.textContent = 'That track has no stored audio to commit.';
         return;
       }
-      const audio = await packAudio(blob, record.fileName);
-      download(packFileName(record.title), serializeProject(record, audio), 'application/json');
-      this.#summary.textContent = `${track.title} packed — ${formatBytes(blob.size)} of song included.`;
+      const audio = await embedAudio(blob, record.fileName);
+      download(commitFileName(record.title), serializeProject(record, audio), 'application/json');
+      this.#summary.textContent =
+        `${track.title} committed — ${formatBytes(blob.size)} of song included. ` +
+        'Open it on your other device.';
     } catch {
-      this.#summary.textContent = 'That track could not be packed.';
+      this.#summary.textContent = 'That track could not be committed.';
     }
   }
 

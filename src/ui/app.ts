@@ -179,7 +179,12 @@ export function mountApp(root: HTMLElement): void {
     void runPipeline(store, file, { onAudioDecoded: adoptTrack });
   };
 
-  const dropzone = new DropzoneView(openFile);
+  const dropzone = new DropzoneView({
+    onFile: openFile,
+    // The way in on a device that has never seen this song: a commit brings
+    // the audio with it, so nothing is asked for and nothing is missing.
+    onProjectFile: (file) => openProjectFile(file, null),
+  });
 
   /**
    * Write the current track's work before leaving it.

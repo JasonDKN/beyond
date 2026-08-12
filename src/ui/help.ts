@@ -53,6 +53,15 @@ const GROUPS: readonly Group[] = [
     ],
   },
   {
+    title: 'Moving between devices',
+    note: 'A commit is one file holding a song, its lyrics, and every timing you tapped.',
+    items: [
+      { keys: ['Tracks → Commit'], what: 'Write the open song out as a file you can carry' },
+      { keys: ['Open a commit'], what: 'On the first screen of any device — brings the song with it' },
+      { keys: ['Save to file'], what: 'Work only, no audio — small enough for a synced folder' },
+    ],
+  },
+  {
     title: 'Elsewhere',
     items: [
       { keys: ['Esc'], what: 'Close the track drawer, or clear the selected word' },

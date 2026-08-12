@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { packFileName, parseProject, projectFileName, serializeProject } from '@/storage/project';
+import { commitFileName, parseProject, projectFileName, serializeProject } from '@/storage/project';
 import type { TrackRecord } from '@/storage/library';
 
 /**
@@ -70,7 +70,7 @@ describe('project files', () => {
   });
 });
 
-describe('travel packs', () => {
+describe('commits — a project with the song inside it', () => {
   const audio = {
     fileName: 'Please.mp3',
     mimeType: 'audio/mpeg',
@@ -106,7 +106,7 @@ describe('travel packs', () => {
     expect(opened.audioFileName).toBeNull();
   });
 
-  it('keeps the work when the packed audio is corrupt', () => {
+  it('keeps the work when the committed audio is corrupt', () => {
     // The words took a fortnight; the song can be picked again in a second.
     // Losing the first to protect the second would be exactly backwards.
     const broken = serializeProject(record, { ...audio, data: 'not base64 !!!' });
@@ -115,8 +115,8 @@ describe('travel packs', () => {
     expect(opened.audio).toBeNull();
   });
 
-  it('names a pack distinctly from a plain project', () => {
-    expect(packFileName('Please')).toBe('Please.beyond-pack.json');
-    expect(packFileName('안녕 / hi?')).toBe('hi.beyond-pack.json');
+  it('names a commit distinctly from a plain project', () => {
+    expect(commitFileName('Please')).toBe('Please.beyond-commit.json');
+    expect(commitFileName('안녕 / hi?')).toBe('hi.beyond-commit.json');
   });
 });

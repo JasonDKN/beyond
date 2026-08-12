@@ -9,14 +9,21 @@ import { el, ICONS, svgIcon } from './dom';
  * into its own phonetic transcription. The animation is CSS; this file just
  * puts the two strings next to each other and handles the file.
  */
+export interface DropzoneCallbacks {
+  onFile(file: File): void;
+  /** A commit or project file, brought over from another device. */
+  onProjectFile(file: File): void;
+}
+
 export class DropzoneView {
   readonly element: HTMLElement;
 
   #input: HTMLInputElement;
+  #projectInput: HTMLInputElement;
   #onFile: (file: File) => void;
 
-  constructor(onFile: (file: File) => void) {
-    this.#onFile = onFile;
+  constructor(callbacks: DropzoneCallbacks) {
+    this.#onFile = callbacks.onFile;
 
     this.#input = el('input', {
       type: 'file',
@@ -28,11 +35,51 @@ export class DropzoneView {
       },
     }) as HTMLInputElement;
 
+    /*
+     * The other way in, and for a while the missing one.
+     *
+     * Arriving on a device that has never seen this app — a phone, on a trip —
+     * the only thing on screen was "choose an audio file", which is not what
+     * you have. You have a commit: one file holding a song and a fortnight of
+     * work on it. There was no button for that anywhere on the opening screen,
+     * because the one that existed lived in the track drawer, and the track
+     * drawer only opens once a song is already loaded. A door on the inside of
+     * a locked room.
+     *
+     * No `accept` filter on purpose. A commit ends in `.json`, but file
+     * pickers on phones are inconsistent about honouring extension filters,
+     * and a greyed-out file you cannot select is indistinguishable from a
+     * broken app. Anything picked that is not a commit says so plainly.
+     */
+    this.#projectInput = el('input', {
+      type: 'file',
+      class: 'visually-hidden',
+      'data-role': 'open-commit',
+      onchange: (event: Event) => {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (file) callbacks.onProjectFile(file);
+      },
+    }) as HTMLInputElement;
+
     const button = el(
       'button',
       { class: 'dropzone__button', type: 'button', onclick: () => this.#input.click() },
       svgIcon(ICONS.upload, 'Choose a file'),
       'Choose an audio file',
+    );
+
+    const openCommit = el(
+      'button',
+      {
+        class: 'dropzone__button dropzone__button--commit',
+        type: 'button',
+        'data-tip':
+          'Open a commit made on another device\nOne file holding the song, its lyrics and all your timings',
+        onclick: () => this.#projectInput.click(),
+      },
+      'Open a commit',
     );
 
     this.element = el(
@@ -54,12 +101,13 @@ export class DropzoneView {
         { class: 'dropzone__body' },
         'Beyond listens, finds the words, and writes each one in the International Phonetic Alphabet — then lays them across the waveform where they were sung.',
       ),
-      button,
+      el('div', { class: 'dropzone__actions' }, button, openCommit),
       this.#input,
+      this.#projectInput,
       el(
         'p',
         { class: 'dropzone__note' },
-        'MP3, WAV, FLAC, M4A, OGG. Transcription runs on your machine by default; nothing is uploaded.',
+        'MP3, WAV, FLAC, M4A, OGG. Or open a commit from another device — it brings the song and your work with it. Everything runs on your machine; nothing is uploaded.',
       ),
     );
 
