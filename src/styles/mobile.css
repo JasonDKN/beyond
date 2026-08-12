@@ -1,0 +1,326 @@
+/*
+ * Beyond on a phone.
+ *
+ * The desktop layout assumes two things a phone does not have: width for two
+ * columns, and a pointer precise enough for a 2-pixel waveform. Rather than
+ * shrink everything proportionally — which would keep all four panes and make
+ * each one useless — each view sheds whatever is not its job.
+ *
+ * Learning gets the most attention, because it is the mode you use away from
+ * the machine you built the song on: on a train, on a plane, walking. There,
+ * the waveform is decoration. You are reading words and hearing them arrive,
+ * so the words take the screen and the waveform goes away entirely. The parts
+ * strip stays, because jumping to the chorus is exactly what you want on a
+ * small screen where scrolling is expensive.
+ */
+
+@media (max-width: 720px) {
+  /* Use the visual viewport, so the address bar sliding away does not leave a
+     dead strip at the bottom of the app. */
+  body,
+  #app {
+    min-height: 100svh;
+  }
+
+  .stage {
+    padding: var(--space-3) var(--space-3) 0;
+    gap: var(--space-3);
+  }
+
+  /* --- Chrome ------------------------------------------------------------ */
+
+  /*
+   * The header, as three short rows rather than one long one: who we are and
+   * what is open, then the four steps, then the actions. Left as a single
+   * flex line it wrapped into something that ate two thirds of the screen and
+   * pushed the words — the entire point of the app — below the fold.
+   */
+  .masthead {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .masthead__brand {
+    grid-column: 1;
+  }
+
+  .wordmark {
+    font-size: var(--step-1);
+  }
+
+  .wordmark__ipa {
+    display: none;
+  }
+
+  /*
+   * The four steps, as a scrollable rail. Squeezing them to fit would make
+   * each one too small to hit; letting them scroll keeps every target a
+   * comfortable size and costs only a swipe.
+   */
+  .modeswitch {
+    grid-column: 1 / -1;
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+
+  .modeswitch::-webkit-scrollbar {
+    display: none;
+  }
+
+  .modeswitch__button {
+    padding: 0.45rem 0.9rem;
+    flex: none;
+  }
+
+  /* Actions scroll sideways rather than wrapping into a second block. */
+  .trackbar {
+    grid-column: 2;
+    order: 2;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-left: 0;
+    border-left: none;
+    gap: var(--space-2);
+  }
+
+  .trackbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .trackbar__button {
+    flex: none;
+  }
+
+  .trackbar__now {
+    min-width: 7rem;
+    max-width: 11rem;
+  }
+
+  /*
+   * Language, engine, notation and export are decisions you make once, on the
+   * machine where you build the song. On a phone they are six controls in the
+   * way of the one thing you came for, so only the display layers survive —
+   * and only where they do something, which is Learning.
+   */
+  .controls {
+    grid-column: 1 / -1;
+    order: 4;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Everything except the display layers, which are the only controls that
+     change what you are reading rather than how it was built. */
+  .controls .control:not(.control--layer),
+  .controls__coverage {
+    display: none;
+  }
+
+  body:not(.mode-learning) .controls {
+    display: none;
+  }
+
+  .controls__layers {
+    padding-left: 0;
+    border-left: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+    width: 100%;
+  }
+
+  .controls__layers::-webkit-scrollbar {
+    display: none;
+  }
+
+  .control--layer {
+    flex: none;
+  }
+
+  /* --- Transport --------------------------------------------------------- */
+
+  .transport {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+    padding: var(--space-2);
+  }
+
+  /* Zoom belongs to the waveform; where there is no waveform there is nothing
+     to zoom, and the row is short enough already. */
+  .transport__label:not(.transport__label--rate) {
+    display: none;
+  }
+
+  .transport__group--right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .transport__rate {
+    width: 6.5rem;
+  }
+
+  .transport__volume {
+    width: 5rem;
+  }
+
+  /* Bigger hit targets for the things you actually press mid-song. */
+  .transport__play {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .transport__loop-button {
+    width: 2.2rem;
+    height: 2.2rem;
+  }
+
+  /* --- One column everywhere --------------------------------------------- */
+
+  .stage__score {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  /* The word inspector is a side panel with nowhere to sit. Tapping a word
+     still selects it; the detail is a desktop luxury. */
+  .inspector {
+    display: none;
+  }
+
+  .sections__block {
+    /* Thumbs, not mice. */
+    min-width: 2.2rem;
+  }
+
+  /* --- Setup ------------------------------------------------------------- */
+
+  body.mode-setup .lyrics__input {
+    min-height: 55svh;
+    font-size: var(--step--1);
+  }
+
+  body.mode-setup .lyrics__foot {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .lyrics__ready {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* --- Beatmap ----------------------------------------------------------- */
+
+  /*
+   * Timing on a phone is a real thing to do — it is how you would fix one late
+   * line on the train. The waveform stays, because seeing the vocal coming is
+   * what makes a tap land, but it shrinks to a strip and Tap becomes a target
+   * you can hit without looking.
+   */
+  body.mode-beatmap .staff__frame {
+    height: clamp(56px, 9svh, 84px);
+  }
+
+  body.mode-beatmap .lyrics__lines {
+    max-height: none;
+  }
+
+  body.mode-beatmap .lyrics__foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    flex-wrap: wrap;
+    padding: var(--space-2) 0 var(--space-3);
+    background: linear-gradient(180deg, transparent, rgba(12, 16, 34, 0.96) 30%);
+  }
+
+  body.mode-beatmap .lyrics__tap {
+    flex: 1 1 100%;
+    justify-content: center;
+    padding: 0.8rem 1rem;
+    font-size: var(--step-1);
+  }
+
+  body.mode-beatmap .lyrics__line {
+    grid-template-columns: 2.9rem minmax(0, 1fr) 1.4rem;
+    padding: 0.35rem var(--space-2);
+  }
+
+  /* --- Learning ---------------------------------------------------------- */
+
+  /*
+   * The mode this is all for. No waveform, no grid, no inspector — just the
+   * parts of the song you can jump between, the transport, and the words.
+   */
+  body.mode-learning .staff__frame,
+  body.mode-learning .grid {
+    display: none;
+  }
+
+  body.mode-learning .stage {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  body.mode-learning .stage__score-scroll {
+    padding-right: 0;
+  }
+
+  /* The line you are on, big enough to read at arm's length. */
+  body.mode-learning .score__line {
+    padding: var(--space-3) 0;
+  }
+
+  body.mode-learning .score__word {
+    font-size: var(--step-1);
+  }
+
+  /* --- Practice ---------------------------------------------------------- */
+
+  body.mode-practice .practice {
+    padding: var(--space-3);
+  }
+
+  /* --- Overlays ---------------------------------------------------------- */
+
+  .library--drawer {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .help {
+    padding: var(--space-3);
+  }
+
+  .help__groups {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .tip {
+    max-width: calc(100vw - 2rem);
+  }
+}
+
+/*
+ * Touch, at any width.
+ *
+ * Hover tips are meaningless without a pointer — on a touch screen the browser
+ * fires a synthetic hover on tap, which would flash a panel over the very
+ * thing you just pressed.
+ */
+@media (hover: none) {
+  .tip {
+    display: none;
+  }
+
+  /* Row actions that appear on hover can never appear. Show them always. */
+  .lyrics__retap {
+    opacity: 1;
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Beyond — songs, written in sound",
+  "short_name": "Beyond",
+  "description": "Learn to sing a song in a language you do not speak: paste the lyrics, tap the timing, read the phonetics.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#06070f",
+  "theme_color": "#06070f",
+  "categories": ["education", "music"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -2,7 +2,10 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'coverage'] },
+  // The service worker runs in a worker global, not the browser or Node one, and
+// is shipped verbatim rather than compiled. Linting it against either set of
+// globals only produces noise about `self` and `caches`.
+  { ignores: ['dist', 'node_modules', 'coverage', 'public/sw.js'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

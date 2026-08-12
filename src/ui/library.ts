@@ -5,10 +5,13 @@ import {
   exportLibrary,
   formatBytes,
   formatWhen,
+  getTrack,
+  getTrackAudio,
   importLibrary,
   listTracks,
   type TrackSummary,
 } from '@/storage/library';
+import { packAudio, packFileName, serializeProject } from '@/storage/project';
 import { download } from '@/export';
 import { clear, el, formatClock } from './dom';
 
@@ -272,6 +275,22 @@ export class LibraryView {
     const actions = el(
       'div',
       { class: 'library__actions' },
+      // A pack is only worth offering when there is a song to put in it.
+      track.hasAudio
+        ? el(
+            'button',
+            {
+              class: 'library__action library__action--pack',
+              type: 'button',
+              'data-tip':
+                `Pack ${track.title} for another device\n` +
+                'One file holding the words, timings and the song itself — ' +
+                'open it on your phone and everything is there',
+              onclick: () => void this.#pack(track),
+            },
+            'Pack',
+          )
+        : null,
       track.hasAudio
         ? el(
             'button',
@@ -297,6 +316,31 @@ export class LibraryView {
     );
 
     return el('div', { class: 'library__row', 'data-track-id': track.id }, open, actions);
+  }
+
+  /**
+   * Write one song out complete: the work and the music in a single file.
+   *
+   * The normal project file leaves the audio out, because the fingerprint
+   * finds it again on a machine that already has it. A device you have never
+   * opened this song on cannot do that, so a pack carries the song along —
+   * which is the whole difference between arriving with your work and
+   * arriving with a file that asks you for an MP3 you left at home.
+   */
+  async #pack(track: TrackSummary): Promise<void> {
+    this.#summary.textContent = `Packing ${track.title}…`;
+    try {
+      const [record, blob] = await Promise.all([getTrack(track.id), getTrackAudio(track.id)]);
+      if (!record || !blob) {
+        this.#summary.textContent = 'That track has no stored audio to pack.';
+        return;
+      }
+      const audio = await packAudio(blob, record.fileName);
+      download(packFileName(record.title), serializeProject(record, audio), 'application/json');
+      this.#summary.textContent = `${track.title} packed — ${formatBytes(blob.size)} of song included.`;
+    } catch {
+      this.#summary.textContent = 'That track could not be packed.';
+    }
   }
 
   async #backup(): Promise<void> {

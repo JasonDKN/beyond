@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseProject, projectFileName, serializeProject } from '@/storage/project';
+import { packFileName, parseProject, projectFileName, serializeProject } from '@/storage/project';
 import type { TrackRecord } from '@/storage/library';
 
 /**
@@ -32,7 +32,7 @@ const record: TrackRecord = {
 
 describe('project files', () => {
   it('round-trips every part of the work', () => {
-    const restored = parseProject(serializeProject(record));
+    const restored = parseProject(serializeProject(record)).track;
     expect(restored.id).toBe(record.id);
     expect(restored.sheet.lines).toHaveLength(3);
     expect(restored.sheet.lines[0]?.startSec).toBe(12.5);
@@ -52,7 +52,7 @@ describe('project files', () => {
   });
 
   it('keeps the fingerprint, which is how the audio finds its way back', () => {
-    expect(parseProject(serializeProject(record)).id).toBe('abc123-214');
+    expect(parseProject(serializeProject(record)).track.id).toBe('abc123-214');
   });
 
   it('refuses files it does not understand rather than half-loading them', () => {
@@ -67,5 +67,56 @@ describe('project files', () => {
     expect(projectFileName('Practice track')).toBe('Practice track.beyond.json');
     expect(projectFileName('a/b:c*d?')).toBe('abcd.beyond.json');
     expect(projectFileName('')).toBe('track.beyond.json');
+  });
+});
+
+describe('travel packs', () => {
+  const audio = {
+    fileName: 'Please.mp3',
+    mimeType: 'audio/mpeg',
+    bytes: 6,
+    // "BEYOND" as base64 — a stand-in for an MP3, exact bytes and all.
+    data: 'QkVZT05E',
+  };
+
+  it('carries the song inside the project file', () => {
+    const json = serializeProject(record, audio);
+    const opened = parseProject(json);
+    expect(opened.track.id).toBe(record.id);
+    expect(opened.audioFileName).toBe('Please.mp3');
+    expect(opened.audio).toBeInstanceOf(Blob);
+    expect(opened.audio?.type).toBe('audio/mpeg');
+    expect(opened.audio?.size).toBe(6);
+  });
+
+  it('gives back exactly the bytes it was handed', async () => {
+    const opened = parseProject(serializeProject(record, audio));
+    expect(await opened.audio?.text()).toBe('BEYOND');
+  });
+
+  it('marks itself as version 2, so an older reader can tell', () => {
+    expect(JSON.parse(serializeProject(record, audio)).version).toBe(2);
+    expect(JSON.parse(serializeProject(record)).version).toBe(1);
+  });
+
+  it('still opens a plain project file, which has no audio at all', () => {
+    const opened = parseProject(serializeProject(record));
+    expect(opened.track.sheet.lines).toHaveLength(3);
+    expect(opened.audio).toBeNull();
+    expect(opened.audioFileName).toBeNull();
+  });
+
+  it('keeps the work when the packed audio is corrupt', () => {
+    // The words took a fortnight; the song can be picked again in a second.
+    // Losing the first to protect the second would be exactly backwards.
+    const broken = serializeProject(record, { ...audio, data: 'not base64 !!!' });
+    const opened = parseProject(broken);
+    expect(opened.track.sheet.lines).toHaveLength(3);
+    expect(opened.audio).toBeNull();
+  });
+
+  it('names a pack distinctly from a plain project', () => {
+    expect(packFileName('Please')).toBe('Please.beyond-pack.json');
+    expect(packFileName('안녕 / hi?')).toBe('hi.beyond-pack.json');
   });
 });

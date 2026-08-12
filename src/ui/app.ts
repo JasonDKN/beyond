@@ -334,11 +334,24 @@ export function mountApp(root: HTMLElement): void {
       // adopting would write the current sheet straight over the file we were
       // asked to open.
       await flushCurrentTrack();
-      const adopted = await adoptProject(parsed);
+      const adopted = await adoptProject(parsed.track);
       store.patch({ libraryOpen: false });
       projectHandle = handle;
       projectTrackId = adopted.id;
       trackBar.setLinkedFile(handle?.name ?? null);
+
+      // A travel pack brought the song with it. Keep it, so this device never
+      // has to ask for the file again — which is the entire point of a pack on
+      // a device that has never seen the music.
+      if (parsed.audio) {
+        await saveTrackAudio(adopted.id, parsed.audio);
+        openFile(
+          new File([parsed.audio], parsed.audioFileName ?? adopted.fileName, {
+            type: parsed.audio.type || 'audio/mpeg',
+          }),
+        );
+        return;
+      }
 
       const blob = await getTrackAudio(adopted.id);
       if (blob) {

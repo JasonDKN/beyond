@@ -12,17 +12,42 @@ import { saveTrack, type TrackRecord } from './library';
  * whatever backs up the rest of your documents.
  *
  * The file holds the irreplaceable part — lyrics, timings, translations — and
- * not the audio, which would be megabytes of something you already have. On
- * opening a project the audio is found in the library by fingerprint, or asked
- * for once and then cached, after which it opens in a click.
+ * normally not the audio, which would be megabytes of something you already
+ * have. On opening a project the audio is found in the library by fingerprint,
+ * or asked for once and then cached, after which it opens in a click.
+ *
+ * A travel pack is the same file with the song inside it.
+ *
+ * That exception exists for one situation: you built a fortnight of work on a
+ * machine you are about to leave behind. The fingerprint that normally
+ * reunites a project with its music only works on a device that already has
+ * the music, and your phone does not. So a pack carries both, and the work
+ * lands on the other device complete rather than asking for a file that is
+ * three hundred miles away.
+ *
+ * The audio rides as base64, which costs a third more bytes than the raw file
+ * and saves writing a zip container and its reader. For one song that trade is
+ * obviously right; it is why packs are per song rather than per library.
  */
 
 export const PROJECT_EXTENSION = '.beyond.json';
+export const PACK_EXTENSION = '.beyond-pack.json';
+
+/** Audio carried inside a project file, for moving a song between devices. */
+interface PackedAudio {
+  readonly fileName: string;
+  readonly mimeType: string;
+  readonly bytes: number;
+  /** The file itself, base64-encoded. */
+  readonly data: string;
+}
 
 interface ProjectFile {
   readonly format: 'beyond-project';
-  readonly version: 1;
+  /** 1 is work only; 2 may also carry the audio. Both still open. */
+  readonly version: 1 | 2;
   readonly savedAt: string;
+  readonly audio?: PackedAudio;
   readonly track: {
     readonly id: string;
     readonly title: string;
@@ -36,11 +61,12 @@ interface ProjectFile {
   };
 }
 
-export function serializeProject(record: TrackRecord): string {
+export function serializeProject(record: TrackRecord, audio?: PackedAudio): string {
   const project: ProjectFile = {
     format: 'beyond-project',
-    version: 1,
+    version: audio ? 2 : 1,
     savedAt: new Date().toISOString(),
+    ...(audio ? { audio } : {}),
     track: {
       id: record.id,
       title: record.title,
@@ -56,7 +82,14 @@ export function serializeProject(record: TrackRecord): string {
   return JSON.stringify(project, null, 2);
 }
 
-export function parseProject(json: string): ProjectFile['track'] {
+export interface OpenedProject {
+  readonly track: ProjectFile['track'];
+  /** Present when the file was a travel pack. */
+  readonly audio: Blob | null;
+  readonly audioFileName: string | null;
+}
+
+export function parseProject(json: string): OpenedProject {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -67,7 +100,66 @@ export function parseProject(json: string): ProjectFile['track'] {
   if (project.format !== 'beyond-project' || !project.track?.sheet) {
     throw new Error('That does not look like a Beyond project file.');
   }
-  return project.track;
+
+  // A version 1 file has no audio and never did; that is not a fault.
+  const packed = project.audio;
+  if (!packed?.data) {
+    return { track: project.track, audio: null, audioFileName: null };
+  }
+
+  try {
+    return {
+      track: project.track,
+      audio: decodeAudio(packed),
+      audioFileName: packed.fileName,
+    };
+  } catch {
+    // Corrupt audio must not cost you the work, which is the part that took a
+    // fortnight. Open the project and let the fingerprint ask for the song.
+    return { track: project.track, audio: null, audioFileName: null };
+  }
+}
+
+/** Wrap a file up so it can travel inside a project. */
+export async function packAudio(blob: Blob, fileName: string): Promise<PackedAudio> {
+  return {
+    fileName,
+    mimeType: blob.type || 'audio/mpeg',
+    bytes: blob.size,
+    data: await toBase64(blob),
+  };
+}
+
+function decodeAudio(packed: PackedAudio): Blob {
+  const binary = atob(packed.data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: packed.mimeType });
+}
+
+/**
+ * Base64 a blob without blowing the call stack.
+ *
+ * `btoa(String.fromCharCode(...bytes))` is the one-liner everybody writes and
+ * it throws on anything over about a hundred kilobytes, because every byte
+ * becomes an argument. A FileReader hands the whole thing over as a data URL
+ * in one go, and the browser does the encoding in native code.
+ */
+async function toBase64(blob: Blob): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('That audio file could not be read.'));
+    reader.readAsDataURL(blob);
+  });
+  const comma = dataUrl.indexOf(',');
+  return comma < 0 ? '' : dataUrl.slice(comma + 1);
+}
+
+/** A recognisable filename for a pack. */
+export function packFileName(title: string): string {
+  const safe = title.replace(/[^\w\-. ]+/g, '').trim() || 'track';
+  return `${safe}${PACK_EXTENSION}`;
 }
 
 /** A safe, recognisable filename for a track. */
