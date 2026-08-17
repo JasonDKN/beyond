@@ -1,6 +1,14 @@
 import type { State, WordRef } from '@/core/store';
 import type { PhoneticScore, PhoneticWord } from '@/core/types';
 import { clear, el } from './dom';
+import { visibleLayers, type LayerKind } from './layers';
+
+const LAYER_CLASS: Record<LayerKind, string> = {
+  written: 'score__lyric',
+  spoken: 'score__spoken',
+  ipa: 'score__ipa',
+  respelling: 'score__respell',
+};
 
 /**
  * The score: lyric above, IPA beneath, line by line.
@@ -103,19 +111,18 @@ export class ScoreView {
       line.words.forEach((word, wordIndex) => {
         const layers = state.layers;
 
-        // Stacked readings of one word. The pronounced layer only appears when
-        // it actually differs from the spelling — showing 노래 twice teaches
-        // nothing, but showing 좋아요 above 조아요 teaches the whole rule.
-        const stack: (HTMLElement | null)[] = [
-          layers.written ? el('span', { class: 'score__lyric' }, word.text) : null,
-          layers.pronounced && word.changed && word.pronouncedForm
-            ? el('span', { class: 'score__spoken' }, word.pronouncedForm)
-            : null,
-          layers.ipa ? el('span', { class: 'score__ipa', lang: 'und-fonipa' }, word.ipa) : null,
-          layers.respelling && word.respelling
-            ? el('span', { class: 'score__respell' }, word.respelling)
-            : null,
-        ];
+        // Stacked readings of one word — see visibleLayers for which appear
+        // and, more importantly, why one of them used to appear as nothing.
+        const stack = visibleLayers(word, layers).map((line) =>
+          el(
+            'span',
+            {
+              class: LAYER_CLASS[line.kind],
+              ...(line.kind === 'ipa' ? { lang: 'und-fonipa' } : {}),
+            },
+            line.text,
+          ),
+        );
 
         const node = el(
           'button',
@@ -136,7 +143,7 @@ export class ScoreView {
               this.#callbacks.onSeek(word.startSec);
             },
           },
-          ...stack.filter((part): part is HTMLElement => part !== null),
+          ...stack,
         );
         if (word.confidence < 0.6) node.classList.add('is-uncertain');
         // A word whose sound departs from its spelling is the teachable one.
