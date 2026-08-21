@@ -356,3 +356,59 @@
   color: var(--paper-dim);
 }
 
+
+/* --- Reading along ------------------------------------------------------- */
+
+/*
+ * The karaoke wipe.
+ *
+ * Colour sweeps through the word being sung, driven by the playhead rather
+ * than by an animation, so it tracks the song itself — a held note fills
+ * slowly, a fast run fills quickly, and half speed fills at half speed. The
+ * `--sung` fraction is set per frame by the score view.
+ *
+ * Applied to the word's first line, whichever layer that turns out to be, so
+ * it keeps working whatever you have switched on under SHOW.
+ */
+.score__word.is-singing > span:first-child {
+  background-image: linear-gradient(
+    90deg,
+    var(--mint) calc(var(--sung, 0) * 100%),
+    #f4fffb calc(var(--sung, 0) * 100% + 3px)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Words already gone stay lit, so the line fills up behind you. */
+.score__word.is-sung > span:first-child {
+  color: var(--mint);
+}
+
+/*
+ * Current line, and two lines of warning.
+ *
+ * The line being sung is parked near the top of the panel rather than the
+ * middle (see ANCHOR_FRACTION in score.ts), so the room below it goes to what
+ * is coming. These weights say the same thing in light: what you are singing,
+ * what you are about to sing, and — much further back — what you have sung.
+ */
+body.mode-learning .score__line {
+  opacity: 0.3;
+  transition: opacity var(--duration-mid) var(--ease-out);
+}
+
+body.mode-learning .score__line.is-active ~ .score__line {
+  opacity: 0.6;
+}
+
+/* From the third line ahead, it is no longer preparation, just context. */
+body.mode-learning .score__line.is-active ~ .score__line ~ .score__line ~ .score__line {
+  opacity: 0.3;
+}
+
+body.mode-learning .score__line.is-active {
+  opacity: 1;
+}

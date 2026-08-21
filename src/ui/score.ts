@@ -4,6 +4,22 @@ import { clear, el } from './dom';
 import { FollowGuard } from './follow';
 import { visibleLayers, type LayerKind } from './layers';
 
+/**
+ * Where the line being sung parks on screen, as a fraction of the visible box.
+ *
+ * Near the top rather than in the middle, so what is *coming* gets the space.
+ * Centring splits the view evenly between the line you have just sung and the
+ * one arriving, which sounds fair and is not: you can already sing the line
+ * behind you. Reading along is a race against what happens next, and two lines
+ * of warning is the difference between following a fast verse and losing it.
+ */
+const ANCHOR_FRACTION = 0.16;
+
+/** …in pixels, with a floor so a very short panel still leaves a little room. */
+function anchorOffset(viewportHeight: number): number {
+  return Math.min(Math.max(viewportHeight * ANCHOR_FRACTION, 8), 140);
+}
+
 const LAYER_CLASS: Record<LayerKind, string> = {
   written: 'score__lyric',
   spoken: 'score__spoken',
@@ -38,6 +54,8 @@ export class ScoreView {
   #layerKey = '';
   #activeLine = -1;
   #activeWord: WordRef | null = null;
+  /** Which line currently carries wipe state, so only it has to be cleaned up. */
+  #wipedLine = -1;
   #follow = true;
 
   /** The element that actually scrolls; supplied by the app shell. */
@@ -148,6 +166,7 @@ export class ScoreView {
     this.#lineNodes = [];
     this.#activeLine = -1;
     this.#activeWord = null;
+    this.#wipedLine = -1;
 
     const score = state.score;
     if (!score) return;
@@ -252,7 +271,7 @@ export class ScoreView {
     // ancestor, which is not reliably the scroll container.
     const scrollerRect = scroller.getBoundingClientRect();
     const nodeRect = node.getBoundingClientRect();
-    const delta = nodeRect.top - scrollerRect.top - (scroller.clientHeight - nodeRect.height) / 2;
+    const delta = nodeRect.top - scrollerRect.top - anchorOffset(scroller.clientHeight);
     const target = scroller.scrollTop + delta;
     const top = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
     if (Math.abs(top - scroller.scrollTop) < 2) return;
@@ -277,8 +296,11 @@ export class ScoreView {
     if (!node || !scroller) return null;
     const scrollerRect = scroller.getBoundingClientRect();
     const nodeRect = node.getBoundingClientRect();
-    const centre = scrollerRect.top + scrollerRect.height / 2;
-    return Math.abs(nodeRect.top + nodeRect.height / 2 - centre);
+    // Measured against where the sung line is supposed to sit, not the middle
+    // of the box — otherwise follow would think it had drifted the moment it
+    // parked the line correctly.
+    const home = scrollerRect.top + anchorOffset(scroller.clientHeight);
+    return Math.abs(nodeRect.top - home);
   }
 
   /** Everything known about a word, for the hover tooltip. */
@@ -338,6 +360,8 @@ export class ScoreView {
       }
     }
 
+    this.#applyWipe(state, lineIndex, wordRef);
+
     if (
       wordRef?.lineIndex !== this.#activeWord?.lineIndex ||
       wordRef?.wordIndex !== this.#activeWord?.wordIndex
@@ -352,6 +376,55 @@ export class ScoreView {
       }
       this.#activeWord = wordRef;
     }
+  }
+
+  /**
+   * The karaoke wipe: colour sweeping through the line as it is sung.
+   *
+   * The oldest cue there is, and the only one that needs no explaining — you
+   * have read one before without being told how. It answers a question the
+   * highlight alone cannot: not just which word is being sung, but how far
+   * through it you are, which is what tells you whether to hold a syllable or
+   * move on.
+   *
+   * Driven by the playhead rather than by a CSS animation, because the thing
+   * it is tracking is the song. A held note wipes slowly, a fast run wipes
+   * quickly, and a track played at half speed wipes at half speed, all for
+   * free — and all of it comes from the word timings tapped in Beatmap, so
+   * the more words you have timed, the truer this gets.
+   */
+  #applyWipe(state: State, lineIndex: number, wordRef: WordRef | null): void {
+    // Only one line is ever wiped, so leaving the last one is a matter of
+    // putting it back rather than sweeping the whole score every frame.
+    if (this.#wipedLine !== lineIndex && this.#wipedLine >= 0) {
+      for (const node of this.#wordNodes[this.#wipedLine] ?? []) {
+        node.classList.remove('is-sung');
+        node.style.removeProperty('--sung');
+      }
+    }
+    this.#wipedLine = lineIndex;
+    if (lineIndex < 0) return;
+
+    const words = state.score?.lines[lineIndex]?.words ?? [];
+    const nodes = this.#wordNodes[lineIndex] ?? [];
+    const singing = wordRef?.lineIndex === lineIndex ? wordRef.wordIndex : -1;
+
+    nodes.forEach((node, index) => {
+      const word = words[index];
+      if (!word) return;
+
+      if (index === singing) {
+        const span = Math.max(0.001, word.endSec - word.startSec);
+        const through = (state.currentTime - word.startSec) / span;
+        node.style.setProperty('--sung', String(Math.min(Math.max(through, 0), 1)));
+        node.classList.remove('is-sung');
+      } else {
+        node.style.removeProperty('--sung');
+        // Words already gone in this line stay lit, the way a karaoke line
+        // fills up behind you. Words still to come are left alone.
+        node.classList.toggle('is-sung', word.endSec <= state.currentTime);
+      }
+    });
   }
 
   #applySelection(selected: WordRef | null): void {
