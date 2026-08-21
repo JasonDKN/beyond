@@ -30,6 +30,14 @@ interface Placed {
 
 const STAFF_LINES = 5;
 
+/** How far ahead of a target its ring starts closing. */
+const APPROACH_SEC = 1.7;
+/** …and how long the flash lasts after it lands. */
+const LANDED_SEC = 0.3;
+/** Ring size at its widest, and the target it collapses onto. */
+const RING_RADIUS = 26;
+const DOT_RADIUS = 4.5;
+
 export class StaffView {
   readonly element: HTMLCanvasElement;
 
@@ -135,6 +143,7 @@ export class StaffView {
     this.#paintWaveform();
     this.#paintStaffLines();
     this.#paintOnsets();
+    this.#paintApproach();
     this.#placed = this.#layoutWords();
     this.#paintVowelContour();
     this.#paintNoteheads();
@@ -272,6 +281,99 @@ export class StaffView {
       ctx.moveTo(x, y - 6);
       ctx.lineTo(x, y);
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Rings closing on what is about to arrive.
+   *
+   * Tapping is a reaction, and a reaction to sound alone is always a little
+   * late — you hear the vocal start, then move. A ring that shrinks onto its
+   * moment turns that into something you can anticipate instead, the way a
+   * rhythm game does: by the time it closes, your hand is already going.
+   *
+   * Two kinds of target, told apart by colour, because they are different
+   * claims about the song:
+   *
+   *   Mint — a time you tapped yourself. Certain. On a second pass these are
+   *   your own marks coming back at you, which is how you check them.
+   *
+   *   Amber — a transient the analysis found. A guess, and drawn like one, in
+   *   the same colour as the tick marks it belongs to. On a first pass, when
+   *   nothing has been tapped yet, these are the only warning available and
+   *   the reason this helps at all.
+   *
+   * Only the next second and a half, and only a handful at once. A ring for
+   * every transient in the song would be a wall of circles and no help to
+   * anybody.
+   */
+  #paintApproach(): void {
+    const state = this.#state;
+    if (!state || state.mode !== 'beatmap') return;
+
+    const now = state.currentTime;
+    const { start, span } = this.#window();
+    const band = this.#staffBand();
+    const y = band.top + band.height * 0.62;
+    const ctx = this.#context;
+
+    const targets: { at: number; mine: boolean }[] = [];
+    for (const line of state.score?.lines ?? []) targets.push({ at: line.startSec, mine: true });
+    for (const onset of state.onsets) targets.push({ at: onset, mine: false });
+
+    const soon = targets
+      .filter(
+        (target) =>
+          target.at > now - LANDED_SEC &&
+          target.at < now + APPROACH_SEC &&
+          target.at >= start &&
+          target.at <= start + span,
+      )
+      .sort((a, b) => a.at - b.at)
+      .slice(0, 5);
+    if (soon.length === 0) return;
+
+    ctx.save();
+    /*
+     * Zoomed out, a second and a half of song is a couple of pixels wide, and
+     * every ring in the lookahead lands on the same spot — five circles drawn
+     * on top of each other, which reads as a smudge rather than as anything
+     * approaching. Keeping them a ring's width apart means the nearest target
+     * is always the one you see, at any zoom.
+     */
+    let lastX = Number.NEGATIVE_INFINITY;
+    for (const target of soon) {
+      const x = this.#timeToX(target.at);
+      if (x - lastX < RING_RADIUS * 0.6) continue;
+      lastX = x;
+      const lead = target.at - now;
+      const colour = target.mine ? '124, 245, 213' : '255, 184, 107';
+      ctx.strokeStyle = `rgba(${colour}, 1)`;
+      ctx.fillStyle = `rgba(${colour}, 1)`;
+
+      if (lead >= 0) {
+        // Closing. Wide and faint when far off, tight and bright on arrival.
+        const near = 1 - lead / APPROACH_SEC;
+        ctx.globalAlpha = (0.1 + near * 0.65) * (target.mine ? 1 : 0.7);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, DOT_RADIUS + (RING_RADIUS - DOT_RADIUS) * (1 - near), 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        // Landed. One quick ring outward, then gone.
+        const gone = Math.min(1, -lead / LANDED_SEC);
+        ctx.globalAlpha = (1 - gone) * 0.75;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, DOT_RADIUS + gone * 20, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = lead >= 0 ? 0.45 : 0.85;
+      ctx.beginPath();
+      ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
