@@ -1,9 +1,23 @@
 /* The library on the opening screen. */
 
+/*
+ * Centred when it fits, and only then.
+ *
+ * `align-content: center` on a scrolling box is a trap. While the content is
+ * shorter than the box it does the nice thing and floats it in the middle.
+ * The moment it is taller, centring splits the overflow evenly above and
+ * below — and a scroll container cannot reach what sits above its own origin.
+ * The first rows are painted off the top, scrollTop is already 0, and there is
+ * no gesture that brings them back. With enough songs saved, the top of the
+ * library became permanently unreachable.
+ *
+ * `safe` is the whole fix: it means "centre, unless that would push content
+ * out of reach, in which case start". Everything below stays as it was.
+ */
 .opening {
   grid-row: 2;
   display: grid;
-  align-content: center;
+  align-content: safe center;
   gap: var(--space-6);
   min-height: 0;
   overflow-y: auto;
@@ -12,6 +26,23 @@
 
 body.has-audio .opening {
   display: none;
+}
+
+/*
+ * Saved songs first, the way in underneath.
+ *
+ * This order used to be an accident: the dropzone carries `grid-row: 2` from
+ * when it sat directly in the stage grid, which left row 1 free for the
+ * library to fall into. It reads correctly — someone who has songs saved is
+ * usually here for one of them — so it is written down rather than left to
+ * a declaration that means something else.
+ */
+.opening > .library {
+  grid-row: 1;
+}
+
+.opening > .dropzone {
+  grid-row: 2;
 }
 
 .library {
