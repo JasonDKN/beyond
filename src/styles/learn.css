@@ -582,6 +582,55 @@
   color: var(--mint);
 }
 
+/*
+ * Which notation the sheet reads in.
+ *
+ * Quieter than Tap and Words, because it is a preference you set once rather
+ * than something you press while working. It shows the notation you are
+ * looking at, not the one you would switch to.
+ */
+.lyrics__notation {
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  color: var(--ghost);
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.lyrics__notation:hover:not(:disabled) {
+  color: var(--paper-dim);
+  border-color: rgba(140, 168, 232, 0.35);
+}
+
+.lyrics__notation:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* A respelling is ordinary letters, so it is set like ordinary letters —
+   the IPA keeps the italic, lighter treatment that marks it as notation. */
+.reading__ipa.is-respell {
+  font-style: normal;
+  letter-spacing: 0.01em;
+}
+
+/* Readings inside a word chip: the same stack, scaled down to fit a button. */
+.lyrics__word .reading {
+  gap: 0;
+}
+
+.lyrics__word .reading__word {
+  gap: 0.15rem;
+}
+
+.lyrics__word .reading__ipa {
+  font-size: 0.55rem;
+}
+
 /* --- Section bar --------------------------------------------------------- */
 
 /*

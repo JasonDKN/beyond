@@ -16,6 +16,35 @@ import {
 
 /** How far before a line to rewind when you ask to re-time it. */
 const LEAD_IN_SEC = 2.5;
+
+/**
+ * Which way the sheet spells out how a word sounds.
+ *
+ * Two answers to one question. IPA is exact and has to be learned; the
+ * respelling is approximate and can be read on sight. Which one helps depends
+ * entirely on who is looking, so it is a choice rather than a decision, and it
+ * is remembered — nobody wants to reset it every time they open a song.
+ */
+export type ReadingStyle = 'respell' | 'ipa';
+
+const READING_KEY = 'beyond.reading';
+
+function loadReadingStyle(): ReadingStyle {
+  try {
+    return localStorage.getItem(READING_KEY) === 'ipa' ? 'ipa' : 'respell';
+  } catch {
+    // Private browsing, or storage turned off. A default is a fine answer.
+    return 'respell';
+  }
+}
+
+function saveReadingStyle(style: ReadingStyle): void {
+  try {
+    localStorage.setItem(READING_KEY, style);
+  } catch {
+    // Losing the preference is a small thing; failing to switch is not.
+  }
+}
 /**
  * The same, for words — shorter, because you are already inside the line and
  * a long run-up would put several words in front of the one you came for.
@@ -26,6 +55,7 @@ import {
   loadReadings,
   needsLatinEngine,
   readLine,
+  readWord,
   type WordReading,
 } from '@/phonetics/readings';
 import { clear, el, formatClock } from './dom';
@@ -59,6 +89,8 @@ export class LyricsPanelView {
   #list: HTMLElement;
   #tapButton: HTMLButtonElement;
   #wordsButton: HTMLButtonElement;
+  #notationButton: HTMLButtonElement;
+  #readingStyle: ReadingStyle = loadReadingStyle();
   #buildButton: HTMLButtonElement;
   #readyButton: HTMLButtonElement;
   #panelTitle: HTMLElement;
@@ -157,6 +189,26 @@ export class LyricsPanelView {
       el('kbd', {}, 'W'),
     ) as HTMLButtonElement;
 
+    /*
+     * Which notation the sheet reads in.
+     *
+     * Labelled with what you are looking at rather than what pressing it
+     * does — a button that says "IPA" while showing respellings is a riddle.
+     * The tooltip carries the verb.
+     */
+    this.#notationButton = el(
+      'button',
+      {
+        class: 'lyrics__notation',
+        type: 'button',
+        onclick: () => {
+          this.#readingStyle = this.#readingStyle === 'respell' ? 'ipa' : 'respell';
+          saveReadingStyle(this.#readingStyle);
+          this.#renderLines();
+        },
+      },
+    ) as HTMLButtonElement;
+
     this.#buildButton = el(
       'button',
       {
@@ -211,6 +263,7 @@ export class LyricsPanelView {
         { class: 'lyrics__foot' },
         this.#tapButton,
         this.#wordsButton,
+        this.#notationButton,
         el(
           'button',
           { class: 'lyrics__reset', type: 'button', onclick: () => this.#resetTimings() },
@@ -738,7 +791,7 @@ export class LyricsPanelView {
             ? el(
                 'span',
                 { class: 'lyrics__text' },
-                renderReading(readLine(line.text, this.#language || 'ko')),
+                renderReading(readLine(line.text, this.#language || 'ko'), this.#readingStyle),
               )
             : el('span', { class: 'lyrics__text' }, line.text),
         translation,
@@ -810,7 +863,18 @@ export class LyricsPanelView {
               this.#renderLines();
             },
           },
-          el('span', { class: 'lyrics__word-text' }, word),
+          /*
+           * The word, and how to say it.
+           *
+           * Word timing zooms in on one word at a time, and the first version
+           * of these chips dropped the pronunciation while doing it — exactly
+           * backwards. Knowing what sound to listen for is the whole reason
+           * you can tap a language you do not speak, and it matters most at
+           * the moment you are waiting for one specific word to arrive.
+           */
+          this.#readable
+            ? renderReading([readWord(word, this.#language || 'ko')], this.#readingStyle)
+            : el('span', { class: 'lyrics__word-text' }, word),
           el('span', { class: 'lyrics__word-at' }, timed ? formatOffset(at - start) : '·'),
         );
       }),
@@ -847,6 +911,18 @@ export class LyricsPanelView {
               'pins the guesses around it',
             ].join('\n')
           : 'Time a line first\nWord times are measured from where its line starts',
+    );
+
+    // Only useful where there are readings to switch between.
+    this.#notationButton.textContent = this.#readingStyle === 'respell' ? 'Read-along' : 'IPA';
+    this.#notationButton.disabled = !this.#readable;
+    this.#notationButton.setAttribute(
+      'data-tip',
+      this.#readable
+        ? this.#readingStyle === 'respell'
+          ? 'Sounds are respelled in letters you already read\nSwitch to IPA'
+          : 'Sounds are written in the International Phonetic Alphabet\nSwitch to read-along spelling'
+        : 'No pronunciation engine for this language yet',
     );
 
     this.#tapLabel.textContent = wordMode ? 'Tap word' : 'Tap';
@@ -1009,7 +1085,7 @@ function formatOffset(seconds: number): string {
  * reading for the whole word — their letters already tell you most of it, and
  * splitting "please" into six pieces would be noise rather than help.
  */
-function renderReading(words: readonly WordReading[]): HTMLElement {
+function renderReading(words: readonly WordReading[], style: ReadingStyle): HTMLElement {
   return el(
     'span',
     { class: 'reading' },
@@ -1017,16 +1093,34 @@ function renderReading(words: readonly WordReading[]): HTMLElement {
       el(
         'span',
         { class: `reading__word is-${word.script}` },
-        ...word.units.map((unit) =>
-          el(
+        ...word.units.map((unit) => {
+          /*
+           * Read-along where the engine can offer one, IPA where it cannot.
+           *
+           * The gap is not a failure. Latin-script words carry no respelling
+           * because their letters already are one — "please" needs no help
+           * being read aloud by someone reading this in English — so in
+           * read-along the sensible thing under them is nothing at all.
+           */
+          const sound = style === 'respell' ? unit.respell : unit.ipa;
+          return el(
             'span',
             { class: 'reading__unit' },
             el('span', { class: 'reading__written' }, unit.text),
-            unit.ipa === ''
+            sound === ''
               ? null
-              : el('span', { class: 'reading__ipa', lang: 'und-fonipa' }, unit.ipa),
-          ),
-        ),
+              : el(
+                  'span',
+                  {
+                    class: `reading__ipa is-${style}`,
+                    // Marked as phonetic notation only when it is: a browser
+                    // told this is IPA may pick a different font for it.
+                    ...(style === 'ipa' ? { lang: 'und-fonipa' } : {}),
+                  },
+                  sound,
+                ),
+          );
+        }),
       ),
     ),
   );

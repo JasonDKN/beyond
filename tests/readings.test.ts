@@ -55,6 +55,28 @@ describe('reading a syllabary', () => {
     expect(units[1]?.ipa).not.toBe(units[0]?.ipa);
   });
 
+  it('puts a read-along spelling under every block too', () => {
+    const units = readWord('가나다', 'ko').units;
+    expect(units.map((u) => u.respell)).toEqual(['gah', 'nah', 'dah']);
+  });
+
+  it('respells what is said, not what is written', () => {
+    // The point of a respelling: it comes from the pronounced form, after the
+    // sound rules have run, so it does not repeat the mistake a romanisation
+    // of the spelling would make.
+    const units = readWord('좋아요', 'ko').units;
+    expect(units.map((u) => u.respell).join('-')).toBe('jo-ah-yo');
+  });
+
+  it('gives every block one of each, or an honest blank', () => {
+    for (const word of ['가나다', '곳이', '안녕하세요']) {
+      for (const unit of readWord(word, 'ko').units) {
+        expect(typeof unit.respell).toBe('string');
+        expect(typeof unit.ipa).toBe('string');
+      }
+    }
+  });
+
   it('falls back to the whole word when blocks and sounds disagree', () => {
     // Whatever happens, a word never comes back with more units than it has
     // characters, which is what a bad alignment would look like.
@@ -70,6 +92,13 @@ describe('reading an alphabet', () => {
     expect(reading.script).toBe('alphabetic');
     expect(reading.units).toHaveLength(1);
     expect(reading.units[0]?.text).toBe('please');
+  });
+
+  it('offers no read-along for a Latin word, because its letters are one', () => {
+    // Nothing has gone wrong here. Asking how to pronounce "please" in
+    // letters you already read has no useful answer beyond the word itself,
+    // so read-along shows nothing under it rather than inventing a spelling.
+    expect(readWord('please', 'en').units[0]?.respell).toBe('');
   });
 
   it('reads English inside a Korean lyric with the English engine', () => {
