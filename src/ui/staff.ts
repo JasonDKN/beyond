@@ -310,7 +310,9 @@ export class StaffView {
    */
   #paintApproach(): void {
     const state = this.#state;
-    if (!state || state.mode !== 'beatmap') return;
+    if (!state) return;
+    const timing = state.mode === 'beatmap';
+    if (!timing && state.mode !== 'learning') return;
 
     const now = state.currentTime;
     const { start, span } = this.#window();
@@ -320,7 +322,17 @@ export class StaffView {
 
     const targets: { at: number; mine: boolean }[] = [];
     for (const line of state.score?.lines ?? []) targets.push({ at: line.startSec, mine: true });
-    for (const onset of state.onsets) targets.push({ at: onset, mine: false });
+    /*
+     * The amber guesses belong to timing, not to reading.
+     *
+     * In Beatmap a detected transient is the only warning available before you
+     * have tapped anything, which is the whole reason it is drawn. In Learning
+     * everything already has a time, so a second opinion about where a drum hit
+     * was adds nothing and takes attention from the words — which are what you
+     * are here for. What is left is the arrival of the next line, which is
+     * exactly what the score below is asking you to prepare for.
+     */
+    if (timing) for (const onset of state.onsets) targets.push({ at: onset, mine: false });
 
     const soon = targets
       .filter(
