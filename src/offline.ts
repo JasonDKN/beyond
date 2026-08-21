@@ -24,6 +24,27 @@ export function registerServiceWorker(): void {
   // there is nothing to be done about it.
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') return;
 
+  /*
+   * Never in development.
+   *
+   * The worker serves assets cache-first, which is safe in a build because
+   * Vite fingerprints its output: changed code arrives under a changed name,
+   * so a cache hit can never be stale. The dev server fingerprints nothing —
+   * `/src/ui/app.ts` is that URL forever — so the same rule caches every
+   * module of one session and serves them back in the next. The dev server
+   * then reports compiling your edits while the browser quietly runs the code
+   * you wrote yesterday, and the deployed site is fine, which makes it look
+   * like the local checkout is behind.
+   *
+   * Registering only in a build kills that at the source. A worker installed
+   * by an earlier version is still out there, though, and would go on serving
+   * its cache forever, so development also cleans up after it.
+   */
+  if (!import.meta.env.PROD) {
+    void unregisterEverything();
+    return;
+  }
+
   window.addEventListener('load', () => {
     void navigator.serviceWorker
       .register(new URL('sw.js', scope).href, { scope: scope.href })
@@ -32,6 +53,28 @@ export function registerServiceWorker(): void {
         // refuses it still runs the whole app.
       });
   });
+}
+
+/**
+ * Remove any worker and cache this origin is carrying, then reload once.
+ *
+ * Only ever called in development. The reload matters: unregistering does not
+ * evict the worker controlling the page you are already looking at, so without
+ * it the stale copy stays on screen and it takes a manual purge in DevTools to
+ * be rid of it. One reload, only when there was something to remove, and the
+ * page comes back from the dev server.
+ */
+async function unregisterEverything(): Promise<void> {
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    const names = await caches.keys();
+    await Promise.all(names.filter((name) => name.startsWith('beyond-')).map((n) => caches.delete(n)));
+
+    if (registrations.length > 0 && navigator.serviceWorker.controller) location.reload();
+  } catch {
+    // Nothing here is required for the app to run.
+  }
 }
 
 /**

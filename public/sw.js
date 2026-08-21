@@ -17,7 +17,22 @@
  * caching what you actually use is both smaller and better targeted.
  */
 
-const CACHE = 'beyond-v1';
+// Bumped whenever the caching rules change: `activate` deletes every cache
+// that is not this one, so a rename is also how old entries get swept up.
+const CACHE = 'beyond-v2';
+
+/**
+ * Is this URL safe to keep forever?
+ *
+ * Only if its name contains its contents. Vite fingerprints what it builds —
+ * `app-B2kQ7xZ1.js` — so a changed file arrives under a changed name and a
+ * cache hit can never be stale. Everything else on this origin keeps a stable
+ * name across versions: the manifest, the icons, and (in development, where
+ * this worker should never be running at all) every module of the app.
+ */
+function isFingerprinted(pathname) {
+  return /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(pathname);
+}
 
 self.addEventListener('install', () => {
   // Take over as soon as possible; there is no old version worth protecting.
@@ -67,16 +82,42 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     (async () => {
       const cached = await caches.match(request);
-      if (cached) return cached;
+      const immutable = isFingerprinted(url.pathname);
 
-      const fresh = await fetch(request);
-      // Opaque and error responses are not worth keeping; a cached 404 would
-      // outlive the mistake that caused it.
-      if (fresh.ok && fresh.type === 'basic') {
-        const cache = await caches.open(CACHE);
-        cache.put(request, fresh.clone());
+      // A fingerprinted file can never change under its own name, so a hit is
+      // the end of it. This is the path the large assets take — the English
+      // lexicon, the speech model — fetched once and then owned by the device.
+      if (cached && immutable) return cached;
+
+      const network = fetch(request)
+        .then(async (fresh) => {
+          // Opaque and error responses are not worth keeping; a cached 404
+          // would outlive the mistake that caused it.
+          if (fresh.ok && fresh.type === 'basic') {
+            const cache = await caches.open(CACHE);
+            await cache.put(request, fresh.clone());
+          }
+          return fresh;
+        })
+        .catch((error) => {
+          if (cached) return cached;
+          throw error;
+        });
+
+      /*
+       * Everything else: answer from cache at once, and refresh behind it.
+       *
+       * Names that stay the same across versions — the manifest, the icons —
+       * were previously cached first and never looked at again, which meant a
+       * changed one could only be updated by clearing site data. Serving the
+       * copy we have keeps the app instant and keeps it working offline; the
+       * fetch alongside means the next load has the new one.
+       */
+      if (cached) {
+        event.waitUntil(network.catch(() => undefined));
+        return cached;
       }
-      return fresh;
+      return network;
     })(),
   );
 });
