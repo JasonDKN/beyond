@@ -23,11 +23,36 @@ export class TransportView {
   #lastAudibleVolume = 1;
   #followButton: HTMLButtonElement;
   #onResumeFollow: () => void;
+  #waveButton: HTMLButtonElement;
 
-  constructor(player: Player, onZoom: (zoom: number) => void, onResumeFollow: () => void) {
+  constructor(
+    player: Player,
+    onZoom: (zoom: number) => void,
+    onResumeFollow: () => void,
+    onToggleWaveform: () => void,
+  ) {
     this.#player = player;
     this.#onZoom = onZoom;
     this.#onResumeFollow = onResumeFollow;
+
+    /*
+     * Fold the waveform away.
+     *
+     * It belongs in Beatmap, where you are aiming at a vocal you can watch
+     * approaching. In Learning it competes with the words for the same height,
+     * and the words are what you came for. Per view, so the answer can differ
+     * between them — and the parts of the song stay put either way, because
+     * jumping to the chorus is not what anyone is trying to get rid of.
+     */
+    this.#waveButton = el(
+      'button',
+      {
+        class: 'transport__wave',
+        type: 'button',
+        onclick: () => onToggleWaveform(),
+      },
+      '〜',
+    ) as HTMLButtonElement;
 
     // Follow-along, made visible. The old behaviour switched itself off
     // silently when you clicked a word, which is why it seemed to work only
@@ -207,6 +232,7 @@ export class TransportView {
           this.#rateReadout,
         ),
         el('label', { class: 'transport__label' }, 'Zoom', this.#zoom),
+        this.#waveButton,
       ),
     );
 
@@ -284,6 +310,18 @@ export class TransportView {
     this.#followButton.classList.toggle('is-paused', !state.followScore);
     this.#followButton.textContent = state.followScore ? 'Following' : 'Follow';
     this.#followButton.disabled = state.score === null;
+
+    // Labelled by what you are looking at, like the notation switch: the
+    // tooltip carries the verb, so the button never has to be read as a riddle.
+    const folded = state.waveformHidden.includes(state.mode);
+    this.#waveButton.classList.toggle('is-off', folded);
+    this.#waveButton.setAttribute(
+      'data-tip',
+      folded
+        ? 'Waveform folded away in this view\nThe parts of the song stay — click one to jump\nShow it again'
+        : 'Fold the waveform away in this view\nThe parts of the song stay, so you can still jump\nRemembered per view',
+    );
+    this.#waveButton.disabled = !state.audio;
 
     const looping = state.loop !== null;
     this.#loopB.classList.toggle('is-set', looping);

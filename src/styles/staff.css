@@ -202,3 +202,26 @@
   border-radius: 50%;
   background: var(--paper);
 }
+
+/* --- Folded away --------------------------------------------------------- */
+
+/*
+ * The waveform, put away.
+ *
+ * It earns its space in Beatmap, where you are aiming at a vocal you can watch
+ * approaching. In Learning it competes for height with the words, and on a
+ * short window it is the difference between seeing the next two lines and
+ * seeing none of them.
+ *
+ * What stays is the strip of parts beneath it. Folding the waveform is about
+ * removing a picture you are not using, not about giving up the ability to
+ * jump to the chorus — so the buttons keep their places and the strip simply
+ * closes up the gap the waveform left.
+ */
+body.waveform-hidden .staff__frame {
+  display: none;
+}
+
+body.waveform-hidden .sections {
+  margin-top: 0;
+}

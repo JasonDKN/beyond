@@ -63,7 +63,8 @@ body.mode-setup .lyrics__tap,
 body.mode-setup .lyrics__wordmode,
 body.mode-setup .lyrics__reset,
 body.mode-setup .lyrics__build,
-body.mode-setup .transport__follow {
+body.mode-setup .transport__follow,
+body.mode-setup .transport__wave {
   display: none;
 }
 
@@ -337,6 +338,45 @@ body.mode-learning .stage__score-scroll {
 }
 
 .transport__follow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* --- Folding the waveform ------------------------------------------------ */
+
+/*
+ * Sits with Zoom, because both are about the waveform and this one decides
+ * whether there is a waveform to zoom.
+ */
+.transport__wave {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  color: var(--ghost);
+  font-size: 0.9rem;
+  line-height: 1;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.transport__wave:hover:not(:disabled) {
+  color: var(--paper-dim);
+  border-color: rgba(140, 168, 232, 0.35);
+}
+
+/* Folded. Marked, not hidden — you should be able to tell at a glance that
+   something is put away rather than missing. */
+.transport__wave.is-off {
+  color: var(--sky);
+  border-color: rgba(140, 190, 255, 0.45);
+  background: rgba(140, 190, 255, 0.12);
+  text-decoration: line-through;
+}
+
+.transport__wave:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }

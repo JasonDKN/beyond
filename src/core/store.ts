@@ -97,6 +97,15 @@ export interface State {
    * than being outgrown.
    */
   readonly layers: DisplayLayers;
+
+  /**
+   * Views in which the waveform is folded away, leaving the parts of the song.
+   *
+   * Per view, because the right answer differs: Beatmap is aiming at something
+   * you can see coming, Learning is reading words. Kept in the store so the
+   * transport can draw the state of its own switch.
+   */
+  readonly waveformHidden: readonly ViewMode[];
 }
 
 export interface DisplayLayers {
@@ -158,6 +167,7 @@ export class Store {
       respelling: true,
       morphemes: false,
     },
+    waveformHidden: [],
   };
 
   get state(): State {

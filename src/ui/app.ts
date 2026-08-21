@@ -41,6 +41,7 @@ import { StaffView } from './staff';
 import { StatusView } from './status';
 import { SyllableGridView } from './syllableGrid';
 import { TransportView } from './transport';
+import { loadHiddenWaveforms, saveHiddenWaveforms, toggleWaveform } from './waveform';
 
 /**
  * Wiring.
@@ -77,6 +78,11 @@ export function mountApp(root: HTMLElement): void {
     player,
     (zoom) => staff.setZoom(zoom),
     () => store.patch({ followScore: true }),
+    () => {
+      const next = toggleWaveform(store.state.waveformHidden, store.state.mode);
+      saveHiddenWaveforms(next);
+      store.patch({ waveformHidden: next });
+    },
   );
   const status = new StatusView();
   const grid = new SyllableGridView((seconds) => player.seek(seconds));
@@ -489,6 +495,9 @@ export function mountApp(root: HTMLElement): void {
       trackBar.setLinkedFile(null);
     }
   });
+  // Restored before the first render, so a folded waveform never flashes into
+  // view on the way to being hidden.
+  store.patch({ waveformHidden: loadHiddenWaveforms() });
   void library.refresh();
   void drawer.refresh();
 
@@ -531,6 +540,12 @@ export function mountApp(root: HTMLElement): void {
     document.body.classList.toggle('mode-beatmap', state.mode === 'beatmap');
     document.body.classList.toggle('mode-learning', state.mode === 'learning');
     document.body.classList.toggle('mode-practice', state.mode === 'practice');
+    // Folded per view, so the class has to be recomputed whenever either the
+    // view or the preference changes — which is what this render already is.
+    document.body.classList.toggle(
+      'waveform-hidden',
+      state.waveformHidden.includes(state.mode),
+    );
   });
 
   // Leaving Practice releases the microphone, so the browser stops showing a
