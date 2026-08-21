@@ -261,8 +261,14 @@
   }
 
   body.mode-beatmap .lyrics__line {
-    grid-template-columns: 2.9rem minmax(0, 1fr) 1.4rem;
+    grid-template-columns: 2.9rem minmax(0, 1fr) 2.4rem 1.4rem;
     padding: 0.35rem var(--space-2);
+  }
+
+  /* No hover to reveal it, and word timing is worth having on a phone — it is
+     the fiddly fix you make once, sitting still, rather than while walking. */
+  .lyrics__wordsbtn {
+    opacity: 1;
   }
 
   /* --- Learning ---------------------------------------------------------- */

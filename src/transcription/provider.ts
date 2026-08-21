@@ -6,6 +6,7 @@ import type {
   TranscriptSegment,
   TranscriptWord,
 } from '@/core/types';
+import { wordTimings } from './timing';
 
 export interface TranscriptionRequest {
   readonly audio: AudioSource;
@@ -126,28 +127,16 @@ export function groupWordsIntoSegments(
 
 /**
  * Fill in plausible per-word timings when a provider only gives segment-level
- * ones. Words are weighted by character count, which tracks duration better
- * than an even split does.
+ * ones. Words are weighted by syllable count rather than letter count — see
+ * `timing.ts`, where the weighing lives and the reasons are written down.
  */
 export function interpolateWordTimings(
   text: string,
   startSec: number,
   endSec: number,
+  anchors: readonly (number | null | undefined)[] = [],
 ): TranscriptWord[] {
-  const tokens = text.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return [];
-
-  const weights = tokens.map((token) => Math.max(1, token.replace(/[^\p{L}\p{N}]/gu, '').length));
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-  const span = Math.max(0, endSec - startSec);
-
-  let cursor = startSec;
-  return tokens.map((token, index) => {
-    const duration = (span * weights[index]!) / total;
-    const wordStart = cursor;
-    cursor += duration;
-    return { text: token, startSec: wordStart, endSec: cursor };
-  });
+  return wordTimings(text, startSec, endSec, anchors);
 }
 
 /** Guard against providers emitting zero-length or overlapping word spans. */

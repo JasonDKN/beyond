@@ -34,6 +34,17 @@ const GROUPS: readonly Group[] = [
     ],
   },
   {
+    title: 'Timing words inside a line',
+    note: 'A line’s tap says where it starts; the words after it are spread by syllable count, which drifts on a long line. Tap the words you can catch and the rest settle around them — you never need all of them.',
+    items: [
+      { keys: ['W'], what: 'Start timing the words of the armed line, and stop again' },
+      { keys: ['T'], what: 'Time the highlighted word — the same key, one grain finer' },
+      { keys: ['↑', '↓'], what: 'Move to the previous or next word' },
+      { keys: ['Backspace'], what: 'Step back one word and clear it' },
+      { keys: ['Shift-click'], what: 'On the n/m badge: throw a line’s word times away' },
+    ],
+  },
+  {
     title: 'Playback',
     items: [
       { keys: ['Space'], what: 'Play or pause' },

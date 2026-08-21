@@ -421,8 +421,109 @@
 }
 
 .lyrics__line {
-  grid-template-columns: 3.4rem minmax(0, 1.2fr) minmax(0, 1fr) 1.6rem 1.4rem;
+  grid-template-columns: 3.4rem minmax(0, 1.2fr) minmax(0, 1fr) 2.6rem 1.6rem 1.4rem;
   cursor: pointer;
+}
+
+/* --- Timing the words inside a line -------------------------------------- */
+
+/*
+ * How much of this line is real and how much is arithmetic.
+ *
+ * A line's tap fixes only where it starts; the words after it are spread by
+ * syllable count, and on a long line the last of them can be a beat out. This
+ * button both reports that — n of m words pinned by hand — and is the way to
+ * fix it. Quiet until it has something to say, because most lines are short
+ * enough that the estimate is already right.
+ */
+.lyrics__wordsbtn {
+  justify-self: end;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  color: var(--ghost);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.lyrics__line:hover .lyrics__wordsbtn,
+.lyrics__wordsbtn:focus-visible,
+.lyrics__wordsbtn.is-anchored,
+.lyrics__wordsbtn.is-on {
+  opacity: 1;
+}
+
+.lyrics__wordsbtn.is-anchored {
+  color: var(--mint);
+  border-color: rgba(124, 245, 213, 0.3);
+}
+
+.lyrics__wordsbtn.is-on {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: var(--mint);
+}
+
+.lyrics__wordsbtn:disabled {
+  opacity: 0;
+  cursor: default;
+}
+
+/* The line, broken where the timing code breaks it, while you tap through it. */
+.lyrics__words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.3rem;
+  align-items: flex-end;
+}
+
+.lyrics__word {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  color: var(--paper-dim);
+  font-family: var(--font-display);
+  line-height: 1.1;
+}
+
+/* A word with a real time behind it, as opposed to a placed guess. */
+.lyrics__word.is-timed {
+  color: var(--paper);
+  border-color: rgba(124, 245, 213, 0.25);
+  background: rgba(124, 245, 213, 0.07);
+}
+
+/* The one the next tap lands on. Same accent as the armed line, one grain in. */
+.lyrics__word.is-next {
+  border-color: var(--mint);
+  background: rgba(124, 245, 213, 0.16);
+  color: var(--paper);
+}
+
+.lyrics__word-at {
+  font-family: var(--font-ui);
+  font-size: 0.55rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ghost);
+  letter-spacing: 0.02em;
+}
+
+.lyrics__word.is-next .lyrics__word-at {
+  color: var(--mint);
+}
+
+/* Tapping words is the same gesture on a finer grain, and says so. */
+.lyrics__tap.is-words {
+  border-color: rgba(124, 245, 213, 0.75);
+  background: linear-gradient(180deg, rgba(124, 245, 213, 0.34), rgba(124, 245, 213, 0.12));
 }
 
 /* --- Section bar --------------------------------------------------------- */

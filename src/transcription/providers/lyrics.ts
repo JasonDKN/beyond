@@ -1,6 +1,7 @@
 import type { LanguageTag, Transcript, TranscriptSegment } from '@/core/types';
 import type { TranscriptionProvider, TranscriptionRequest } from '../provider';
 import { interpolateWordTimings, progressReporter, TranscriptionError } from '../provider';
+import { sungEnd, syllableRate, unitCount } from '../timing';
 
 /**
  * The lyric sheet: words you supply, timings you tap.
@@ -58,6 +59,20 @@ export interface LyricLine {
    * translation you had to think about sticks, and one you skimmed does not.
    */
   readonly translation?: string;
+  /**
+   * Times for individual words, parallel to the whitespace-separated words of
+   * `text`, in seconds. `null` for a word nobody has tapped.
+   *
+   * A line's tap says when the line began and nothing else, so everything
+   * inside it is estimated — well enough for a short line, and visibly not
+   * well enough for a long one. These are the escape hatch: tap along inside
+   * a line and each word you catch becomes a fixed point, with the rest
+   * interpolated between them. Tapping every word is never necessary; the
+   * error only needs pinning where it grows.
+   *
+   * Absent, rather than an array of nulls, until someone times a word.
+   */
+  readonly wordTimes?: readonly (number | null)[];
 }
 
 export interface LyricSheet {
@@ -254,15 +269,37 @@ export function parseSheet(raw: string, existing?: LyricSheet): ParsedLyrics {
     }
 
     const before = carried.get(line)?.shift();
+    // Word times are positional, so they only survive while the line still has
+    // the same number of words in it. Editing a line invalidates them; keeping
+    // them would silently attach one word's tap to a different word.
+    const words = before?.wordTimes;
+    const keepWords = words !== undefined && words.length === wordCount(line);
     lines.push({
       text: line,
       startSec: before?.startSec ?? null,
       ...(current ? { sectionId: current.id } : {}),
       ...(before?.translation === undefined ? {} : { translation: before.translation }),
+      ...(keepWords ? { wordTimes: words } : {}),
     });
   }
 
   return { lines, sections };
+}
+
+/**
+ * How many words a line has, by the same split the timing code uses.
+ *
+ * One definition, used everywhere: the panel drawing the word chips, the
+ * parser deciding whether old word times still fit, and the score placing
+ * them. Two definitions of "word" that disagree by one would misalign every
+ * tap after the disagreement.
+ */
+export function wordCount(text: string): number {
+  return splitWords(text).length;
+}
+
+export function splitWords(text: string): string[] {
+  return text.trim().split(/\s+/).filter(Boolean);
 }
 
 /**
@@ -554,6 +591,38 @@ export function getSheet(): LyricSheet {
 /** How long the final line runs for, when there is no next tap to bound it. */
 const TRAILING_LINE_SEC = 6;
 
+/** A line that has been tapped, so it can actually be placed on the staff. */
+interface TimedLine extends LyricLine {
+  readonly startSec: number;
+  readonly index: number;
+}
+
+/**
+ * Where a line stops being sung, respecting anything tapped by hand.
+ *
+ * The estimate is only an estimate; a word someone timed inside the line is
+ * not. If a tapped word lands beyond where the arithmetic said the line ended,
+ * the arithmetic is what is wrong, and the line plainly runs at least that far.
+ */
+function lineEnd(
+  startSec: number,
+  boundarySec: number,
+  text: string,
+  rate: number,
+  anchors: readonly (number | null)[],
+): number {
+  const estimated = sungEnd(startSec, boundarySec, unitCount(text), rate);
+
+  let latest = startSec;
+  for (const at of anchors) {
+    if (at !== null && Number.isFinite(at) && at > latest) latest = at;
+  }
+  if (latest <= estimated) return estimated;
+
+  // Leave the tapped word room to be sung, but never past the next line.
+  return Math.min(boundarySec, latest + Math.max(0.3, rate * 2));
+}
+
 class LyricSheetProvider implements TranscriptionProvider {
   readonly id = 'lyrics';
   readonly label = 'My lyrics + tapped timing';
@@ -581,36 +650,53 @@ class LyricSheetProvider implements TranscriptionProvider {
     // rather than dropped — the panel keeps showing them as needing a tap.
     const timed = currentSheet.lines
       .map((line, index) => ({ ...line, index }))
-      .filter(
-        (line): line is { text: string; startSec: number; translation?: string; index: number } =>
-          line.startSec !== null,
-      )
+      .filter((line): line is TimedLine => line.startSec !== null)
       .sort((a, b) => a.startSec - b.startSec);
 
     if (timed.length === 0) {
       throw new TranscriptionError('No lines have been timed yet.', this.id);
     }
 
-    const segments: TranscriptSegment[] = timed.map((line, i) => {
-      const next = timed[i + 1];
-      const endSec = Math.min(
-        next ? next.startSec : line.startSec + TRAILING_LINE_SEC,
+    /*
+     * Where each line must stop regardless: the next tap, or the end of the
+     * song. This is not where the line stops being *sung* — see below — but it
+     * is a hard ceiling, since two lines may never overlap.
+     */
+    const boundaries = timed.map((line, i) =>
+      Math.min(
+        timed[i + 1]?.startSec ?? line.startSec + TRAILING_LINE_SEC,
         request.audio.durationSec,
-      );
+      ),
+    );
+
+    /*
+     * How fast this particular song is sung, measured from the taps it already
+     * has. A ballad and a rap verse need different arithmetic, and the song is
+     * the only thing that knows which one it is.
+     */
+    const rate = syllableRate(
+      timed.map((line, i) => ({
+        units: unitCount(line.text),
+        availableSec: boundaries[i]! - line.startSec,
+      })),
+    );
+
+    const segments: TranscriptSegment[] = timed.map((line, i) => {
+      const anchors = line.wordTimes ?? [];
+      const endSec = lineEnd(line.startSec, boundaries[i]!, line.text, rate, anchors);
       return {
         id: `line-${line.index}`,
         text: line.text,
         startSec: line.startSec,
         endSec,
         ...(line.translation ? { translation: line.translation } : {}),
-        // Within a line, words are spaced by character count. Korean is
-        // syllable-timed, so this is a better approximation there than it is
-        // for a stress-timed language like English.
+        // Words are placed by syllable count between whatever times are known
+        // — the line's tap, any words tapped inside it, and the estimated end.
         //
         // Confidence is 1: you typed these words. There is no model to doubt,
         // and marking them uncertain would be inventing a doubt that does not
         // exist.
-        words: interpolateWordTimings(line.text, line.startSec, endSec).map((word) => ({
+        words: interpolateWordTimings(line.text, line.startSec, endSec, anchors).map((word) => ({
           ...word,
           confidence: 1,
         })),

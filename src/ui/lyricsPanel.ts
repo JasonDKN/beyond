@@ -7,6 +7,8 @@ import {
   parseSheet,
   setSheet,
   sheetToText,
+  splitWords,
+  wordCount,
   type LyricLine,
   type LyricSection,
   type LyricSheet,
@@ -14,6 +16,11 @@ import {
 
 /** How far before a line to rewind when you ask to re-time it. */
 const LEAD_IN_SEC = 2.5;
+/**
+ * The same, for words — shorter, because you are already inside the line and
+ * a long run-up would put several words in front of the one you came for.
+ */
+const WORD_LEAD_IN_SEC = 1.2;
 import {
   canRead,
   loadReadings,
@@ -59,6 +66,18 @@ export class LyricsPanelView {
 
   /** Which line the next tap will time. */
   #cursor = 0;
+  /**
+   * Which *word* of that line the next tap will time, or `null` for the usual
+   * line-at-a-time tapping.
+   *
+   * Word timing is a mode rather than a separate screen because it is the same
+   * gesture on a finer grain: the track plays, you press T as things land. All
+   * that changes is what a press means, so the sheet, the keys and the muscle
+   * memory carry straight over.
+   */
+  #wordCursor: number | null = null;
+  /** The word of the tap button, which changes with that mode. */
+  #tapLabel: HTMLElement;
   #sections: readonly LyricSection[] = [];
   #audioKey = '';
   #open = true;
@@ -93,6 +112,7 @@ export class LyricsPanelView {
 
     this.#list = el('ol', { class: 'lyrics__lines' });
 
+    this.#tapLabel = el('span', { class: 'lyrics__tap-label' }, 'Tap');
     this.#tapButton = el(
       'button',
       {
@@ -100,7 +120,7 @@ export class LyricsPanelView {
         type: 'button',
         onclick: () => this.tap(),
       },
-      'Tap',
+      this.#tapLabel,
       el('kbd', {}, 'T'),
     ) as HTMLButtonElement;
 
@@ -187,16 +207,140 @@ export class LyricsPanelView {
    * every line afterwards.
    */
   tap(): void {
+    if (this.#wordCursor !== null) {
+      this.#tapWord();
+      return;
+    }
+
     const sheet = getSheet();
     if (sheet.lines.length === 0) return;
 
     const at = Math.max(0, this.#player.currentTime - 0.12);
-    const lines = sheet.lines.map((line, index) =>
-      index === this.#cursor ? { ...line, startSec: at } : line,
-    );
+    const lines = sheet.lines.map((line, index) => {
+      if (index !== this.#cursor) return line;
+      /*
+       * Re-timing a line carries whatever you timed inside it along by the
+       * same amount.
+       *
+       * The words of a line keep their rhythm relative to its start; what a
+       * late tap got wrong is the start, not the spacing. Dropping the word
+       * times here would punish you for fixing a line — nudge one hook half a
+       * second and lose the work you did inside it.
+       */
+      const shift = line.startSec === null ? 0 : at - line.startSec;
+      const words = line.wordTimes;
+      return {
+        ...line,
+        startSec: at,
+        ...(words
+          ? { wordTimes: words.map((time) => (time === null ? null : time + shift)) }
+          : {}),
+      };
+    });
 
     this.#commit(lines);
     this.#cursor = Math.min(this.#cursor + 1, lines.length);
+    this.#renderLines();
+  }
+
+  /**
+   * Time one word of the armed line, then aim at the next one.
+   *
+   * The same 120 ms correction as a line tap, for the same reason: you press
+   * the key after hearing the word, not as it starts.
+   */
+  #tapWord(): void {
+    const slot = this.#wordCursor;
+    const sheet = getSheet();
+    const line = sheet.lines[this.#cursor];
+    if (slot === null || !line) return;
+
+    const total = wordCount(line.text);
+    if (slot >= total) {
+      this.#exitWords();
+      return;
+    }
+
+    const times = wordTimesOf(line, total);
+    times[slot] = Math.max(0, this.#player.currentTime - 0.12);
+
+    this.#commit(
+      sheet.lines.map((entry, index) =>
+        index === this.#cursor ? { ...entry, wordTimes: times } : entry,
+      ),
+    );
+    // Running off the end of the line leaves word mode rather than sitting on
+    // a word that does not exist — the line is done, and the next thing you
+    // want is the next line.
+    this.#wordCursor = slot + 1 >= total ? null : slot + 1;
+    this.#renderLines();
+  }
+
+  /**
+   * Start timing the words inside a line.
+   *
+   * Aims at the first word that has no time yet, so coming back to a
+   * half-finished line resumes rather than starts over, and drops the playhead
+   * in just before the line so the first word arrives at you instead of
+   * having already gone past.
+   */
+  #armWords(index: number): void {
+    const line = getSheet().lines[index];
+    if (!line || line.startSec === null) return;
+
+    this.#cursor = index;
+    const total = wordCount(line.text);
+    const times = line.wordTimes ?? [];
+    const firstBlank = times.findIndex((time) => time === null || time === undefined);
+    this.#wordCursor = times.length === 0 || firstBlank < 0 ? 0 : Math.min(firstBlank, total - 1);
+
+    this.#player.seek(Math.max(0, line.startSec - WORD_LEAD_IN_SEC));
+    void this.#player.play();
+    this.#renderLines();
+  }
+
+  #exitWords(): void {
+    this.#wordCursor = null;
+    this.#renderLines();
+  }
+
+  /** Point the next word tap at a particular word, staying inside the line. */
+  #aimWord(index: number): void {
+    const line = getSheet().lines[this.#cursor];
+    if (!line) return;
+    this.#wordCursor = Math.max(0, Math.min(index, wordCount(line.text) - 1));
+    this.#renderLines();
+  }
+
+  /** Undo the last word tap: step back onto it and clear it. */
+  #clearWordBack(): void {
+    const slot = this.#wordCursor;
+    const line = getSheet().lines[this.#cursor];
+    if (slot === null || !line) return;
+
+    const total = wordCount(line.text);
+    const target = Math.max(0, slot - 1);
+    const times = wordTimesOf(line, total);
+    times[target] = null;
+
+    this.#commit(
+      getSheet().lines.map((entry, index) =>
+        index === this.#cursor ? { ...entry, wordTimes: times } : entry,
+      ),
+    );
+    this.#wordCursor = target;
+    this.#renderLines();
+  }
+
+  /** Throw away every word time on a line, leaving the line's own tap alone. */
+  #clearWords(index: number): void {
+    this.#commit(
+      getSheet().lines.map((line, i) => {
+        if (i !== index) return line;
+        const { wordTimes: _dropped, ...rest } = line;
+        return rest;
+      }),
+    );
     this.#renderLines();
   }
 
@@ -307,7 +451,12 @@ export class LyricsPanelView {
    * tap it with T like any other, as many times as it takes.
    */
   #arm(index: number, options: { rewind?: boolean } = {}): void {
-    this.#cursor = Math.max(0, Math.min(index, getSheet().lines.length - 1));
+    const next = Math.max(0, Math.min(index, getSheet().lines.length - 1));
+    // Aiming at a different line leaves word mode: word timing belongs to one
+    // line, and carrying it across would put the next tap on a word of a line
+    // you are no longer looking at.
+    if (next !== this.#cursor && this.#wordCursor !== null) this.#wordCursor = null;
+    this.#cursor = next;
     this.#updateSummary();
 
     if (!options.rewind) return;
@@ -334,9 +483,17 @@ export class LyricsPanelView {
   /** Clear one line's timing, leaving every other line alone. */
   #clearLine(index: number): void {
     this.#commit(
-      getSheet().lines.map((line, i) => (i === index ? { ...line, startSec: null } : line)),
+      getSheet().lines.map((line, i) => {
+        if (i !== index) return line;
+        // Word times are measured from the line's own tap, so a line with no
+        // tap cannot keep them. They would be absolute times pointing at a
+        // place in the song this line no longer claims.
+        const { wordTimes: _dropped, ...rest } = line;
+        return { ...rest, startSec: null };
+      }),
     );
     this.#cursor = index;
+    this.#wordCursor = null;
     this.#renderLines();
   }
 
@@ -378,8 +535,14 @@ export class LyricsPanelView {
   }
 
   #resetTimings(): void {
-    this.#commit(getSheet().lines.map((line) => ({ ...line, startSec: null })));
+    this.#commit(
+      getSheet().lines.map((line) => {
+        const { wordTimes: _dropped, ...rest } = line;
+        return { ...rest, startSec: null };
+      }),
+    );
     this.#cursor = 0;
+    this.#wordCursor = null;
     this.#renderLines();
   }
 
@@ -457,7 +620,57 @@ export class LyricsPanelView {
         'Click to aim the next tap at this line',
         '`↑` `↓` move the aim · `T` times it',
         '`R` rewinds into it · `Backspace` clears it',
+        '`W` times the words inside it',
       ].join('\n');
+
+      const total = wordCount(line.text);
+      const times = line.wordTimes ?? [];
+      const anchored = times.filter((at) => at !== null && at !== undefined).length;
+      const timingWords = this.#wordCursor !== null && index === this.#cursor;
+
+      /*
+       * The way into word timing, and a report on it.
+       *
+       * A long line's words are guesses spread between two taps, and the
+       * guess is worst exactly where the line is longest. This says how many
+       * of them have been replaced by something real, which is also the
+       * answer to "is this line's highlighting going to drift?".
+       */
+      const wordsButton = el(
+        'button',
+        {
+          class: `lyrics__wordsbtn${anchored > 0 ? ' is-anchored' : ''}${
+            timingWords ? ' is-on' : ''
+          }`,
+          type: 'button',
+          'data-tip': timingWords
+            ? 'Stop timing words\nThe words you did are kept'
+            : line.startSec === null
+              ? 'Time the line first\nWord times are measured from where the line starts'
+              : [
+                  anchored > 0
+                    ? `${anchored} of ${total} words timed by hand`
+                    : 'Words in this line are estimated',
+                  'Time them yourself: play, then press `T` as each one lands',
+                  'You never need all of them — every one you catch',
+                  'pins the guesses around it',
+                  'Same as `W` · Shift-click to clear them',
+                ].join('\n'),
+          onclick: (event: Event) => {
+            // Shift is the way back out: throw away this line's word times and
+            // let the estimate have it again.
+            if ((event as MouseEvent).shiftKey) {
+              this.#wordCursor = null;
+              this.#clearWords(index);
+            } else if (timingWords) this.#exitWords();
+            else this.#armWords(index);
+          },
+        },
+        anchored > 0 ? `${anchored}/${total}` : '⋯',
+      ) as HTMLButtonElement;
+      // Always drawn, so every row has the same shape — but inert until the
+      // line itself has a time to measure its words against.
+      wordsButton.disabled = line.startSec === null;
 
       const row = el(
         'li',
@@ -472,14 +685,17 @@ export class LyricsPanelView {
           },
         },
         time,
-        this.#readable
-          ? el(
-              'span',
-              { class: 'lyrics__text' },
-              renderReading(readLine(line.text, this.#language || 'ko')),
-            )
-          : el('span', { class: 'lyrics__text' }, line.text),
+        timingWords
+          ? this.#renderWordChips(line, index)
+          : this.#readable
+            ? el(
+                'span',
+                { class: 'lyrics__text' },
+                renderReading(readLine(line.text, this.#language || 'ko')),
+              )
+            : el('span', { class: 'lyrics__text' }, line.text),
         translation,
+        wordsButton,
         el(
           'button',
           {
@@ -511,6 +727,49 @@ export class LyricsPanelView {
     this.#updateSummary();
   }
 
+  /**
+   * The line, broken into its words, while you are timing them.
+   *
+   * The break is the one the timing code already makes — whitespace — so what
+   * you see is exactly what you are aiming at. Nothing is done to the pasted
+   * text: the sheet keeps the line whole, and these chips are a view of it,
+   * which is the whole point. Splitting the lyrics by hand to get word timing
+   * would wreck the sheet you have to read afterwards.
+   */
+  #renderWordChips(line: LyricLine, lineIndex: number): HTMLElement {
+    const words = splitWords(line.text);
+    const times = line.wordTimes ?? [];
+    const start = line.startSec ?? 0;
+
+    return el(
+      'span',
+      { class: 'lyrics__text lyrics__words' },
+      ...words.map((word, index) => {
+        const at = times[index];
+        const timed = at !== null && at !== undefined;
+        return el(
+          'button',
+          {
+            class: `lyrics__word${timed ? ' is-timed' : ''}${
+              index === this.#wordCursor ? ' is-next' : ''
+            }`,
+            type: 'button',
+            'data-tip': timed
+              ? `Timed ${formatOffset(at - start)}s into the line\nClick to aim the next tap here`
+              : 'Not timed — estimated from the words around it\nClick to aim the next tap here',
+            onclick: () => {
+              this.#cursor = lineIndex;
+              this.#wordCursor = index;
+              this.#renderLines();
+            },
+          },
+          el('span', { class: 'lyrics__word-text' }, word),
+          el('span', { class: 'lyrics__word-at' }, timed ? formatOffset(at - start) : '·'),
+        );
+      }),
+    );
+  }
+
   #updateSummary(): void {
     const sheet = getSheet();
     const timed = sheet.lines.filter((line) => line.startSec !== null).length;
@@ -518,6 +777,18 @@ export class LyricsPanelView {
 
     this.#rowNodes.forEach((row, index) => row.classList.toggle('is-next', index === this.#cursor));
     this.#scrollToCursor();
+
+    // What a tap will do, said on the button that does it. The grain changes
+    // under the same key, so the key has to say which grain it is on.
+    const wordMode = this.#wordCursor !== null;
+    this.#tapLabel.textContent = wordMode ? 'Tap word' : 'Tap';
+    this.#tapButton.classList.toggle('is-words', wordMode);
+    this.#tapButton.setAttribute(
+      'data-tip',
+      wordMode
+        ? 'Time the highlighted word at the playhead\n`Backspace` steps back a word · `W` stops'
+        : 'Time the aimed line at the playhead\nSame as `T`',
+    );
 
     if (total === 0) {
       this.#summary.textContent = '';
@@ -528,10 +799,13 @@ export class LyricsPanelView {
     const structure = parts > 0 ? ` · ${parts} part${parts === 1 ? '' : 's'}` : '';
     // Setup counts what arrived; Beatmap counts what is timed. Same line, two
     // different questions, depending on which one you are answering.
+    const armed = getSheet().lines[this.#cursor];
     this.#summary.textContent =
       this.#store.state.mode === 'setup'
         ? `${total} line${total === 1 ? '' : 's'}${structure}`
-        : `${timed} of ${total} lines timed${structure}`;
+        : wordMode && armed
+          ? `Timing word ${(this.#wordCursor ?? 0) + 1} of ${wordCount(armed.text)}`
+          : `${timed} of ${total} lines timed${structure}`;
     this.#buildButton.disabled = timed === 0;
     this.#readyButton.disabled = total === 0;
   }
@@ -596,20 +870,31 @@ export class LyricsPanelView {
         case 'T':
           this.tap();
           break;
+        // The same keys move the aim, at whichever grain you are working on.
         case 'ArrowUp':
-          this.#arm(this.#cursor - 1);
+          if (this.#wordCursor !== null) this.#aimWord(this.#wordCursor - 1);
+          else this.#arm(this.#cursor - 1);
           break;
         case 'ArrowDown':
-          this.#arm(this.#cursor + 1);
+          if (this.#wordCursor !== null) this.#aimWord(this.#wordCursor + 1);
+          else this.#arm(this.#cursor + 1);
           break;
         case 'Backspace':
         case 'Delete':
-          this.#clearLine(this.#cursor);
+          // Inside a line, Backspace undoes the last word rather than throwing
+          // away the line you are in the middle of timing.
+          if (this.#wordCursor !== null) this.#clearWordBack();
+          else this.#clearLine(this.#cursor);
           break;
         case 'r':
         case 'R':
           // Rewind into the armed line, ready to tap it.
           this.#arm(this.#cursor, { rewind: true });
+          break;
+        case 'w':
+        case 'W':
+          if (this.#wordCursor !== null) this.#exitWords();
+          else this.#armWords(this.#cursor);
           break;
         default:
           return;
@@ -617,6 +902,33 @@ export class LyricsPanelView {
       event.preventDefault();
     });
   }
+}
+
+/**
+ * A line's word times as a working array of the right length.
+ *
+ * Lines carry no word times at all until one is tapped, and a line whose text
+ * has been edited may carry the wrong number of them. Both are normalised here
+ * so the tapping code can index freely without checking either case.
+ */
+function wordTimesOf(line: LyricLine, total: number): (number | null)[] {
+  const times = new Array<number | null>(total).fill(null);
+  const existing = line.wordTimes ?? [];
+  for (let index = 0; index < Math.min(total, existing.length); index += 1) {
+    times[index] = existing[index] ?? null;
+  }
+  return times;
+}
+
+/**
+ * A word's time, written as its distance into the line.
+ *
+ * `1:24.3` for a word is precision nobody can use — what you want to know when
+ * checking your own work is that the third word came in eight tenths after the
+ * line did, which is a number you can compare against what you are hearing.
+ */
+function formatOffset(seconds: number): string {
+  return `+${seconds.toFixed(1)}`;
 }
 
 /**
