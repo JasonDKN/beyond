@@ -123,8 +123,17 @@
 
 /* --- Per-line translation in the lyric sheet ----------------------------- */
 
+/*
+ * Six columns: the time, the words, your translation, the word-timing badge,
+ * re-tap, clear.
+ *
+ * This file loads after learn.css, so this is the declaration that actually
+ * applies — and it had four columns for five children, which quietly wrapped
+ * the last two onto a second row. Invisible while those two are hidden until
+ * hover, and immediately visible the moment a sixth child arrived.
+ */
 .lyrics__line {
-  grid-template-columns: 3.4rem minmax(0, 1.2fr) minmax(0, 1fr) 1.6rem;
+  grid-template-columns: 3.4rem minmax(0, 1.2fr) minmax(0, 1fr) 2.6rem 1.6rem 1.4rem;
 }
 
 .lyrics__translation {

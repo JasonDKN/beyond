@@ -58,6 +58,7 @@ export class LyricsPanelView {
   #textarea: HTMLTextAreaElement;
   #list: HTMLElement;
   #tapButton: HTMLButtonElement;
+  #wordsButton: HTMLButtonElement;
   #buildButton: HTMLButtonElement;
   #readyButton: HTMLButtonElement;
   #panelTitle: HTMLElement;
@@ -78,6 +79,14 @@ export class LyricsPanelView {
   #wordCursor: number | null = null;
   /** The word of the tap button, which changes with that mode. */
   #tapLabel: HTMLElement;
+  /**
+   * A one-off explanation, shown where the count usually is.
+   *
+   * For the cases where you asked for something and nothing happened. Doing
+   * nothing silently is the worst answer available: you cannot tell a refusal
+   * from a broken key.
+   */
+  #nudge = '';
   #sections: readonly LyricSection[] = [];
   #audioKey = '';
   #open = true;
@@ -122,6 +131,30 @@ export class LyricsPanelView {
       },
       this.#tapLabel,
       el('kbd', {}, 'T'),
+    ) as HTMLButtonElement;
+
+    /*
+     * The way into word timing.
+     *
+     * Its first home was a badge on each row that appeared on hover, which is
+     * fine for the re-tap and clear buttons beside it — you go looking for
+     * those already knowing what they do. It is useless for something nobody
+     * knows exists: you cannot hover your way to a feature you have never
+     * heard of. So it sits next to Tap, in the one place you are already
+     * looking while timing a song, and says what key does it.
+     */
+    this.#wordsButton = el(
+      'button',
+      {
+        class: 'lyrics__wordmode',
+        type: 'button',
+        onclick: () => {
+          if (this.#wordCursor !== null) this.#exitWords();
+          else this.#armWords(this.#cursor);
+        },
+      },
+      el('span', { class: 'lyrics__wordmode-label' }, 'Words'),
+      el('kbd', {}, 'W'),
     ) as HTMLButtonElement;
 
     this.#buildButton = el(
@@ -177,6 +210,7 @@ export class LyricsPanelView {
         'footer',
         { class: 'lyrics__foot' },
         this.#tapButton,
+        this.#wordsButton,
         el(
           'button',
           { class: 'lyrics__reset', type: 'button', onclick: () => this.#resetTimings() },
@@ -215,6 +249,7 @@ export class LyricsPanelView {
     const sheet = getSheet();
     if (sheet.lines.length === 0) return;
 
+    this.#nudge = '';
     const at = Math.max(0, this.#player.currentTime - 0.12);
     const lines = sheet.lines.map((line, index) => {
       if (index !== this.#cursor) return line;
@@ -286,8 +321,16 @@ export class LyricsPanelView {
    */
   #armWords(index: number): void {
     const line = getSheet().lines[index];
-    if (!line || line.startSec === null) return;
+    if (!line) return;
+    if (line.startSec === null) {
+      // Word times are measured from the line's own tap, so there is nothing
+      // to measure against yet. Say so rather than ignoring the key.
+      this.#nudge = 'Time this line first — press T as it lands, then W';
+      this.#updateSummary();
+      return;
+    }
 
+    this.#nudge = '';
     this.#cursor = index;
     const total = wordCount(line.text);
     const times = line.wordTimes ?? [];
@@ -457,6 +500,8 @@ export class LyricsPanelView {
     // you are no longer looking at.
     if (next !== this.#cursor && this.#wordCursor !== null) this.#wordCursor = null;
     this.#cursor = next;
+    // Whatever the explanation was about, you have moved on from it.
+    this.#nudge = '';
     this.#updateSummary();
 
     if (!options.rewind) return;
@@ -666,7 +711,9 @@ export class LyricsPanelView {
             else this.#armWords(index);
           },
         },
-        anchored > 0 ? `${anchored}/${total}` : '⋯',
+        // A count rather than a glyph: "0/6" says there are six words here and
+        // none of them timed, which is the question this badge answers.
+        line.startSec === null ? '' : `${anchored}/${total}`,
       ) as HTMLButtonElement;
       // Always drawn, so every row has the same shape — but inert until the
       // line itself has a time to measure its words against.
@@ -781,6 +828,27 @@ export class LyricsPanelView {
     // What a tap will do, said on the button that does it. The grain changes
     // under the same key, so the key has to say which grain it is on.
     const wordMode = this.#wordCursor !== null;
+    const armed = getSheet().lines[this.#cursor];
+    const canTimeWords = armed !== undefined && armed.startSec !== null;
+
+    this.#wordsButton.disabled = !wordMode && !canTimeWords;
+    this.#wordsButton.classList.toggle('is-on', wordMode);
+    const label = this.#wordsButton.querySelector('.lyrics__wordmode-label');
+    if (label) label.textContent = wordMode ? 'Done' : 'Words';
+    this.#wordsButton.setAttribute(
+      'data-tip',
+      wordMode
+        ? 'Go back to timing whole lines\nThe words you did are kept\nSame as `W`'
+        : canTimeWords
+          ? [
+              'Time the words inside the aimed line',
+              'It breaks into its words and `T` times each one as it lands',
+              'You never need all of them — every word you catch',
+              'pins the guesses around it',
+            ].join('\n')
+          : 'Time a line first\nWord times are measured from where its line starts',
+    );
+
     this.#tapLabel.textContent = wordMode ? 'Tap word' : 'Tap';
     this.#tapButton.classList.toggle('is-words', wordMode);
     this.#tapButton.setAttribute(
@@ -799,13 +867,15 @@ export class LyricsPanelView {
     const structure = parts > 0 ? ` · ${parts} part${parts === 1 ? '' : 's'}` : '';
     // Setup counts what arrived; Beatmap counts what is timed. Same line, two
     // different questions, depending on which one you are answering.
-    const armed = getSheet().lines[this.#cursor];
     this.#summary.textContent =
       this.#store.state.mode === 'setup'
         ? `${total} line${total === 1 ? '' : 's'}${structure}`
-        : wordMode && armed
-          ? `Timing word ${(this.#wordCursor ?? 0) + 1} of ${wordCount(armed.text)}`
-          : `${timed} of ${total} lines timed${structure}`;
+        : this.#nudge
+          ? this.#nudge
+          : wordMode && armed
+            ? `Timing word ${(this.#wordCursor ?? 0) + 1} of ${wordCount(armed.text)}`
+            : `${timed} of ${total} lines timed${structure}`;
+    this.#summary.classList.toggle('is-nudge', this.#nudge !== '');
     this.#buildButton.disabled = timed === 0;
     this.#readyButton.disabled = total === 0;
   }
