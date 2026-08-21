@@ -344,24 +344,59 @@ export class LyricsPanelView {
     if (slot === null || !line) return;
 
     const total = wordCount(line.text);
-    if (slot >= total) {
-      this.#exitWords();
+    if (total === 0 || slot >= total) {
+      this.#rollOn();
+      this.#renderLines();
       return;
     }
 
+    const at = Math.max(0, this.#player.currentTime - 0.12);
     const times = wordTimesOf(line, total);
-    times[slot] = Math.max(0, this.#player.currentTime - 0.12);
+    times[slot] = at;
+
+    /*
+     * The first word of a line is where the line begins.
+     *
+     * Recording it as the line's own time is what lets a word pass stand on
+     * its own: you can drop into a song nobody has timed, tap every word as it
+     * lands, and come out the other end with both grains done. Without it,
+     * word timing could only ever be a second pass over a first one.
+     */
+    const opensTheLine = slot === 0;
 
     this.#commit(
       sheet.lines.map((entry, index) =>
-        index === this.#cursor ? { ...entry, wordTimes: times } : entry,
+        index === this.#cursor
+          ? { ...entry, wordTimes: times, ...(opensTheLine ? { startSec: at } : {}) }
+          : entry,
       ),
     );
-    // Running off the end of the line leaves word mode rather than sitting on
-    // a word that does not exist — the line is done, and the next thing you
-    // want is the next line.
-    this.#wordCursor = slot + 1 >= total ? null : slot + 1;
+
+    if (slot + 1 < total) this.#wordCursor = slot + 1;
+    else this.#rollOn();
     this.#renderLines();
+  }
+
+  /**
+   * Hand the next tap to the first word of the next line.
+   *
+   * The old behaviour dropped you out of word mode at the end of every line,
+   * which meant timing a song word by word was really timing one line, going
+   * to find the next one, and starting again — dozens of times, against a
+   * track that does not stop for any of it. Words run on across the whole
+   * song now; the line boundary is something the sheet knows about, not
+   * something you have to do anything about.
+   */
+  #rollOn(): void {
+    const lines = getSheet().lines;
+    const next = this.#cursor + 1;
+    if (next >= lines.length) {
+      // The end of the song is the one place stopping is the right answer.
+      this.#wordCursor = null;
+      return;
+    }
+    this.#cursor = next;
+    this.#wordCursor = 0;
   }
 
   /**
@@ -375,22 +410,26 @@ export class LyricsPanelView {
   #armWords(index: number): void {
     const line = getSheet().lines[index];
     if (!line) return;
-    if (line.startSec === null) {
-      // Word times are measured from the line's own tap, so there is nothing
-      // to measure against yet. Say so rather than ignoring the key.
-      this.#nudge = 'Time this line first — press T as it lands, then W';
-      this.#updateSummary();
-      return;
-    }
 
     this.#nudge = '';
     this.#cursor = index;
     const total = wordCount(line.text);
     const times = line.wordTimes ?? [];
     const firstBlank = times.findIndex((time) => time === null || time === undefined);
-    this.#wordCursor = times.length === 0 || firstBlank < 0 ? 0 : Math.min(firstBlank, total - 1);
+    this.#wordCursor =
+      times.length === 0 || firstBlank < 0 ? 0 : Math.min(firstBlank, Math.max(0, total - 1));
 
-    this.#player.seek(Math.max(0, line.startSec - WORD_LEAD_IN_SEC));
+    /*
+     * Drop in just before the line when we know where it is.
+     *
+     * When we do not — a line nobody has timed, which word timing is now
+     * allowed to start from — there is nowhere to rewind *to*. Leaving the
+     * playhead alone and playing from here is the honest answer; guessing a
+     * position would only send you somewhere you did not ask to go.
+     */
+    if (line.startSec !== null) {
+      this.#player.seek(Math.max(0, line.startSec - WORD_LEAD_IN_SEC));
+    }
     void this.#player.play();
     this.#renderLines();
   }
@@ -743,17 +782,15 @@ export class LyricsPanelView {
           type: 'button',
           'data-tip': timingWords
             ? 'Stop timing words\nThe words you did are kept'
-            : line.startSec === null
-              ? 'Time the line first\nWord times are measured from where the line starts'
-              : [
-                  anchored > 0
-                    ? `${anchored} of ${total} words timed by hand`
-                    : 'Words in this line are estimated',
-                  'Time them yourself: play, then press `T` as each one lands',
-                  'You never need all of them — every one you catch',
-                  'pins the guesses around it',
-                  'Same as `W` · Shift-click to clear them',
-                ].join('\n'),
+            : [
+                anchored > 0
+                  ? `${anchored} of ${total} words timed by hand`
+                  : 'Words in this line are estimated',
+                'Time them yourself: play, then press `T` as each one lands',
+                'It runs on into the next line — you never have to come back',
+                'and start again',
+                'Same as `W` · Shift-click to clear them',
+              ].join('\n'),
           onclick: (event: Event) => {
             // Shift is the way back out: throw away this line's word times and
             // let the estimate have it again.
@@ -766,11 +803,8 @@ export class LyricsPanelView {
         },
         // A count rather than a glyph: "0/6" says there are six words here and
         // none of them timed, which is the question this badge answers.
-        line.startSec === null ? '' : `${anchored}/${total}`,
+        `${anchored}/${total}`,
       ) as HTMLButtonElement;
-      // Always drawn, so every row has the same shape — but inert until the
-      // line itself has a time to measure its words against.
-      wordsButton.disabled = line.startSec === null;
 
       const row = el(
         'li',
@@ -893,9 +927,8 @@ export class LyricsPanelView {
     // under the same key, so the key has to say which grain it is on.
     const wordMode = this.#wordCursor !== null;
     const armed = getSheet().lines[this.#cursor];
-    const canTimeWords = armed !== undefined && armed.startSec !== null;
 
-    this.#wordsButton.disabled = !wordMode && !canTimeWords;
+    this.#wordsButton.disabled = total === 0;
     this.#wordsButton.classList.toggle('is-on', wordMode);
     const label = this.#wordsButton.querySelector('.lyrics__wordmode-label');
     if (label) label.textContent = wordMode ? 'Done' : 'Words';
@@ -903,14 +936,12 @@ export class LyricsPanelView {
       'data-tip',
       wordMode
         ? 'Go back to timing whole lines\nThe words you did are kept\nSame as `W`'
-        : canTimeWords
-          ? [
-              'Time the words inside the aimed line',
-              'It breaks into its words and `T` times each one as it lands',
-              'You never need all of them — every word you catch',
-              'pins the guesses around it',
-            ].join('\n')
-          : 'Time a line first\nWord times are measured from where its line starts',
+        : [
+            'Time word by word, straight through the song',
+            '`T` times each word as it lands and runs on into the next line',
+            'The first word of a line sets that line’s time too, so this',
+            'works on a song you have not timed at all',
+          ].join('\n'),
     );
 
     // Only useful where there are readings to switch between.
@@ -949,7 +980,11 @@ export class LyricsPanelView {
         : this.#nudge
           ? this.#nudge
           : wordMode && armed
-            ? `Timing word ${(this.#wordCursor ?? 0) + 1} of ${wordCount(armed.text)}`
+            ? // Both grains at once: where you are in the line, and where the
+              // line is in the song — because word timing now runs through it.
+              `Word ${(this.#wordCursor ?? 0) + 1} of ${wordCount(armed.text)} · line ${
+                this.#cursor + 1
+              } of ${total}`
             : `${timed} of ${total} lines timed${structure}`;
     this.#summary.classList.toggle('is-nudge', this.#nudge !== '');
     this.#buildButton.disabled = timed === 0;

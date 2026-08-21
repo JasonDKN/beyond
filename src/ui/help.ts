@@ -34,10 +34,10 @@ const GROUPS: readonly Group[] = [
     ],
   },
   {
-    title: 'Timing words inside a line',
-    note: 'A line’s tap says where it starts; the words after it are spread by syllable count, which drifts on a long line. Tap the words you can catch and the rest settle around them — you never need all of them.',
+    title: 'Timing words',
+    note: 'A line’s tap says where it starts; the words after it are spread by syllable count, which drifts on a long line. Word timing runs straight through the song — the last word of a line hands over to the first of the next — and the first word of a line sets that line’s own time, so you can do a whole song this way without timing the lines first.',
     items: [
-      { keys: ['W'], what: 'Start timing the words of the armed line, and stop again' },
+      { keys: ['W'], what: 'Start timing words from the armed line, and stop again' },
       { keys: ['T'], what: 'Time the highlighted word — the same key, one grain finer' },
       { keys: ['↑', '↓'], what: 'Move to the previous or next word' },
       { keys: ['Backspace'], what: 'Step back one word and clear it' },
