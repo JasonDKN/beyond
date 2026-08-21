@@ -60,10 +60,14 @@ export function mountApp(root: HTMLElement): void {
   const scoreView = new ScoreView({
     onSeek: (seconds) => player.seek(seconds),
     onSelectWord: (lineIndex, wordIndex) => store.patch({ selected: { lineIndex, wordIndex } }),
-    // Scrolling by hand means you want to read. It stays paused until you say
-    // otherwise — pressing Follow, or loading a different song.
-    onUserScroll: () => {
+    // Scrolling deliberately away means you want to read somewhere else. It
+    // stays paused until the song reaches you again — see follow.ts for what
+    // separates a decision from a nudge.
+    onFollowPause: () => {
       if (store.state.followScore) store.patch({ followScore: false });
+    },
+    onFollowResume: () => {
+      if (!store.state.followScore) store.patch({ followScore: true });
     },
   });
 

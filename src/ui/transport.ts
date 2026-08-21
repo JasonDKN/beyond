@@ -31,14 +31,15 @@ export class TransportView {
 
     // Follow-along, made visible. The old behaviour switched itself off
     // silently when you clicked a word, which is why it seemed to work only
-    // sometimes. Now it only stops when you scroll by hand, and when it does,
-    // this button lights up to say so and to put it back.
+    // sometimes. Now it takes a deliberate scroll away to stop it, this button
+    // lights up to say so, and it hands itself back when the song catches up.
     this.#followButton = el(
       'button',
       {
         class: 'transport__follow',
         type: 'button',
-        'data-tip': 'Scroll the score to keep up with the music',
+        'data-tip':
+          'Scroll the score to keep up with the music\nScroll away to read elsewhere — it resumes on its own\nwhen the song reaches you again',
         onclick: () => this.#onResumeFollow(),
       },
       'Follow',

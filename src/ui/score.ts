@@ -1,6 +1,7 @@
 import type { State, WordRef } from '@/core/store';
 import type { PhoneticScore, PhoneticWord } from '@/core/types';
 import { clear, el } from './dom';
+import { FollowGuard } from './follow';
 import { visibleLayers, type LayerKind } from './layers';
 
 const LAYER_CLASS: Record<LayerKind, string> = {
@@ -21,8 +22,10 @@ const LAYER_CLASS: Record<LayerKind, string> = {
 export interface ScoreCallbacks {
   onSeek(seconds: number): void;
   onSelectWord(lineIndex: number, wordIndex: number): void;
-  /** Fired when the reader scrolls by hand, which pauses follow-along. */
-  onUserScroll(): void;
+  /** The reader has deliberately scrolled away; stop following for now. */
+  onFollowPause(): void;
+  /** The song has caught up to where the reader is looking; follow again. */
+  onFollowResume(): void;
 }
 
 export class ScoreView {
@@ -40,14 +43,14 @@ export class ScoreView {
   /** The element that actually scrolls; supplied by the app shell. */
   #scroller: HTMLElement | null = null;
   /**
-   * Set while we are scrolling the score ourselves.
+   * Who caused the last scroll, and whether they meant it.
    *
-   * Without this, our own smooth scroll fires `scroll` events that look
-   * identical to the reader's, and follow-along would switch itself off the
-   * instant it started working.
+   * See `follow.ts` — a `scroll` event alone cannot tell the reader's swipe
+   * from our own animation, a phone's momentum, or the browser bringing a
+   * focused button into view, and treating them all alike is what made
+   * follow-along switch itself off for no visible reason.
    */
-  #selfScrolling = false;
-  #selfScrollTimer = 0;
+  #guard = new FollowGuard();
 
   constructor(callbacks: ScoreCallbacks) {
     this.#callbacks = callbacks;
@@ -63,21 +66,63 @@ export class ScoreView {
    */
   attachScroller(scroller: HTMLElement): void {
     this.#scroller = scroller;
+    this.#guard.reset(scroller.scrollTop);
+
+    // What the reader does with their hands. A scroll with none of these
+    // behind it belongs to the browser, and says nothing about intent.
+    const gesture = (): void => this.#guard.input(performance.now());
+    for (const kind of ['wheel', 'touchstart', 'touchmove', 'pointerdown'] as const) {
+      scroller.addEventListener(kind, gesture, { passive: true });
+    }
+    // Keys that scroll, and only those: typing in the translation box beside
+    // the score is not a request to stop following along.
+    const SCROLL_KEYS = new Set([
+      'PageUp',
+      'PageDown',
+      'Home',
+      'End',
+      'ArrowUp',
+      'ArrowDown',
+      ' ',
+    ]);
+    scroller.addEventListener('keydown', (event) => {
+      if (SCROLL_KEYS.has((event as KeyboardEvent).key)) gesture();
+    });
+
     scroller.addEventListener(
       'scroll',
       () => {
-        if (this.#selfScrolling) return;
-        this.#callbacks.onUserScroll();
+        const verdict = this.#guard.scrolled(
+          scroller.scrollTop,
+          performance.now(),
+          this.#follow,
+          scroller.clientHeight,
+        );
+        if (verdict === 'pause') this.#callbacks.onFollowPause();
       },
       { passive: true },
     );
   }
 
   set follow(value: boolean) {
+    if (value && !this.#follow) this.#rearm();
     this.#follow = value;
   }
 
+  /**
+   * Forget how far the reader had scrolled.
+   *
+   * Whenever following starts afresh — a new song, a new score, or the Follow
+   * button pressed — the distance travelled during the last gesture stops
+   * being evidence of anything. Carrying it over would let one old swipe
+   * switch follow straight back off.
+   */
+  #rearm(): void {
+    if (this.#scroller) this.#guard.reset(this.#scroller.scrollTop);
+  }
+
   update(state: State): void {
+    if (state.followScore && !this.#follow) this.#rearm();
     this.#follow = state.followScore;
 
     // Rebuild on a new score, or when the visible layers change — both alter
@@ -87,6 +132,9 @@ export class ScoreView {
       this.#renderedScore = state.score;
       this.#layerKey = layerKey;
       this.#build(state);
+      // A rebuilt list is a different height, so the browser may move the
+      // scroll position on its own. That is not the reader scrolling.
+      this.#rearm();
     }
     this.#applyPlayhead(state);
     this.#applySelection(state.selected);
@@ -185,11 +233,7 @@ export class ScoreView {
    * timecode — where the browser may scroll as a side effect.
    */
   #suppressScrollPause(durationMs = 500): void {
-    this.#selfScrolling = true;
-    clearTimeout(this.#selfScrollTimer);
-    this.#selfScrollTimer = window.setTimeout(() => {
-      this.#selfScrolling = false;
-    }, durationMs);
+    this.#guard.mute(performance.now(), durationMs);
   }
 
   /**
@@ -213,16 +257,28 @@ export class ScoreView {
     const top = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
     if (Math.abs(top - scroller.scrollTop) < 2) return;
 
-    this.#selfScrolling = true;
-    scroller.scrollTo({ top, behavior: 'smooth' });
-
     // Smooth scrolling emits events for a while after the call returns, so the
-    // guard has to outlive the animation or the tail end reads as a hand
+    // mute has to outlive the animation or the tail end reads as a hand
     // scroll and switches follow off.
-    clearTimeout(this.#selfScrollTimer);
-    this.#selfScrollTimer = window.setTimeout(() => {
-      this.#selfScrolling = false;
-    }, 700);
+    this.#guard.mute(performance.now(), 700);
+    scroller.scrollTo({ top, behavior: 'smooth' });
+  }
+
+  /**
+   * How far the sung line sits from the middle of the view, in pixels.
+   *
+   * `null` when there is no sung line, or when it is not laid out — the two
+   * cases where "is the song where you are looking?" has no answer, and
+   * follow-along must therefore stay where the reader put it.
+   */
+  #distanceFromCentre(lineIndex: number): number | null {
+    const node = this.#lineNodes[lineIndex];
+    const scroller = this.#scroller;
+    if (!node || !scroller) return null;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const centre = scrollerRect.top + scrollerRect.height / 2;
+    return Math.abs(nodeRect.top + nodeRect.height / 2 - centre);
   }
 
   /** Everything known about a word, for the hover tooltip. */
@@ -264,6 +320,22 @@ export class ScoreView {
       // Scroll whenever the line changes, not only during playback — jumping
       // to a line while paused should bring it into view too.
       if (this.#follow) this.#scrollTo(lineIndex);
+    }
+
+    /*
+     * Paused, but the song may have come back to you.
+     *
+     * Checked on every tick rather than only when the line changes, because
+     * the reader is the one moving: they scroll to somewhere ahead, the sung
+     * line is still elsewhere, and the moment that stops being true is a
+     * moment of theirs, not of the score's.
+     */
+    if (!this.#follow && lineIndex >= 0) {
+      const scroller = this.#scroller;
+      const distance = this.#distanceFromCentre(lineIndex);
+      if (scroller && this.#guard.resumable(performance.now(), distance, scroller.clientHeight)) {
+        this.#callbacks.onFollowResume();
+      }
     }
 
     if (
