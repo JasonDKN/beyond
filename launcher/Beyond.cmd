@@ -3,10 +3,11 @@ rem ---------------------------------------------------------------------------
 rem  Beyond, in one double-click.
 rem
 rem  Starts the dev server inside WSL if it is not already up, waits for it to
-rem  answer, and opens the browser. Clicking it a second time while it is
-rem  already running just opens the tab — which matters, because the dev server
-rem  is pinned to port 5173 and refuses to start twice rather than quietly
-rem  moving to another port and losing every song saved against the first one.
+rem  answer, and opens the project in VS Code. Clicking it a second time
+rem  while it is already running just reopens the window — which matters,
+rem  because the dev server is pinned to port 5173 and refuses to start twice
+rem  rather than quietly moving to another port and losing every song saved
+rem  against the first one.
 rem ---------------------------------------------------------------------------
 setlocal
 title Beyond
@@ -47,5 +48,8 @@ pause
 exit /b 1
 
 :open
-start "" "%URL%"
+rem VS Code shows the app in its own Simple Browser tab, and VS Code restores
+rem that tab with the window — so once you have opened it the first time it
+rem comes back on its own. Ctrl+Alt+B opens it if it is not there.
+code "%~dp0.."
 exit /b 0
