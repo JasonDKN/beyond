@@ -462,3 +462,57 @@ body.has-audio .dropzone {
 .status[data-status='error'] .status__bar {
   background: var(--rose);
 }
+
+/* --- The mark ------------------------------------------------------------ */
+
+/*
+ * A schwa, in the masthead, matching the tab and the home screen exactly.
+ *
+ * One rule governs where this glyph may and may not go, and it matters more
+ * than it looks: the schwa is the app's signature, so it belongs anywhere
+ * Beyond speaks as itself — this corner, the icon, an empty panel — and
+ * nowhere that IPA is being read as content. The score, the lyric sheet and
+ * the inspector are full of real phonetic symbols the reader is trying to
+ * sound out, and a decorative ə among them is indistinguishable from a
+ * transcribed one. An interface that cannot be told apart from its own data
+ * is worse than an interface with no personality at all.
+ */
+.wordmark__mark {
+  font-family: var(--font-ipa);
+  font-size: var(--step-2);
+  line-height: 1;
+  color: var(--mint);
+  margin-right: 0.1em;
+  /* Optical alignment: the schwa's bowl sits low against a capital B. */
+  transform: translateY(0.04em);
+}
+
+/*
+ * Working, said by the mark itself.
+ *
+ * Slow and shallow on purpose — this runs during a decode that can take the
+ * better part of a minute, and anything faster would nag. Stillness is the
+ * resting state, so a page that is doing nothing looks like it.
+ */
+@keyframes mark-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    opacity: 0.55;
+    filter: drop-shadow(0 0 10px rgba(124, 245, 213, 0.55));
+  }
+}
+
+body.is-working .wordmark__mark {
+  animation: mark-breathe 1.9s var(--ease-in-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.is-working .wordmark__mark {
+    animation: none;
+    filter: drop-shadow(0 0 8px rgba(124, 245, 213, 0.5));
+  }
+}

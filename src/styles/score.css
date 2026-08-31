@@ -412,3 +412,36 @@ body.mode-learning .score__line.is-active ~ .score__line ~ .score__line ~ .score
 body.mode-learning .score__line.is-active {
   opacity: 1;
 }
+
+/*
+ * The empty inspector, given the app's own face.
+ *
+ * A panel that exists to describe a word has nothing to describe until you
+ * pick one, and "Select a word" alone reads as a gap. The mark sits behind the
+ * words at low contrast: it is the one place in this column where a decorative
+ * schwa is safe, because there is no transcription on screen to confuse it
+ * with. The moment a word is selected, this panel is replaced entirely.
+ */
+.inspector__empty {
+  position: relative;
+}
+
+.inspector__empty::before {
+  content: 'ə';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -58%);
+  font-family: var(--font-ipa);
+  font-size: 8.5rem;
+  line-height: 1;
+  color: var(--mint);
+  /* Quiet, but not so quiet it reads as a smudge. Below about a tenth it
+     stops looking deliberate and starts looking like a rendering artefact. */
+  opacity: 0.11;
+  pointer-events: none;
+}
+
+.inspector__empty > * {
+  position: relative;
+}

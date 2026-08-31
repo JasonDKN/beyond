@@ -540,6 +540,8 @@ export function mountApp(root: HTMLElement): void {
     document.body.classList.toggle('mode-beatmap', state.mode === 'beatmap');
     document.body.classList.toggle('mode-learning', state.mode === 'learning');
     document.body.classList.toggle('mode-practice', state.mode === 'practice');
+    // The mark in the masthead breathes while there is work in flight.
+    document.body.classList.toggle('is-working', state.status === 'working');
     // Folded per view, so the class has to be recomputed whenever either the
     // view or the preference changes — which is what this render already is.
     document.body.classList.toggle(
@@ -662,6 +664,23 @@ function masthead(
     el(
       'div',
       { class: 'masthead__brand' },
+      /*
+       * The mark, where the app says its own name.
+       *
+       * The same schwa as the tab, the home screen and the taskbar — a logo is
+       * only a logo when it is the same thing in every place you meet it, and
+       * this corner is the one place inside the app where Beyond speaks as
+       * itself rather than about a song.
+       *
+       * It is also the activity light: it breathes while the pipeline works,
+       * so the thing that identifies the app is the thing that tells you it is
+       * busy. One element, two jobs, no spinner to invent.
+       *
+       * Hidden from screen readers because it is decoration here — the word
+       * beside it already says Beyond, and a reader announcing "schwa" would
+       * be reading the furniture.
+       */
+      el('span', { class: 'wordmark__mark', lang: 'und-fonipa', 'aria-hidden': 'true' }, 'ə'),
       el('span', { class: 'wordmark' }, 'Beyond'),
       el(
         'span',
