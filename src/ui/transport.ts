@@ -24,6 +24,16 @@ export class TransportView {
   #followButton: HTMLButtonElement;
   #onResumeFollow: () => void;
   #waveButton: HTMLButtonElement;
+  /**
+   * What the buttons currently show.
+   *
+   * Kept so nothing clickable is rebuilt on a tick that did not change it.
+   * Replacing the contents of a control while someone is pressing it loses the
+   * press — the element the mouse went down on no longer exists to raise a
+   * click, and the button silently does nothing.
+   */
+  #renderedPlaying: boolean | null = null;
+  #renderedFollow: boolean | null = null;
 
   constructor(
     player: Player,
@@ -297,10 +307,32 @@ export class TransportView {
 
   update(state: State): void {
     const playing = state.playing;
-    this.#playButton.replaceChildren(
-      svgIcon(playing ? ICONS.pause : ICONS.play, playing ? 'Pause' : 'Play'),
-    );
-    this.#playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    /*
+     * Only when it actually changes — and that is a bug fix, not a saving.
+     *
+     * This ran unconditionally, and `update` runs on every store change, which
+     * during playback is every tick of the clock. So while a song played, the
+     * icon inside the play button was destroyed and rebuilt dozens of times a
+     * second. Press the mouse down on it and the element under the cursor was
+     * gone before you let go, so the browser had no single target to raise a
+     * click on and the press did nothing.
+     *
+     * The asymmetry was the tell: paused, nothing is ticking and Play always
+     * worked; playing, Pause only worked if you happened to land in a gap
+     * between rebuilds. It felt like hunting for a sweet spot because it was.
+     */
+    if (playing !== this.#renderedPlaying) {
+      this.#renderedPlaying = playing;
+      this.#playButton.replaceChildren(
+        svgIcon(playing ? ICONS.pause : ICONS.play, playing ? 'Pause' : 'Play'),
+      );
+      this.#playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+      // A short flash on the change, so the button visibly answers the press
+      // rather than only the icon quietly differing afterwards.
+      this.#playButton.classList.remove('is-struck');
+      void this.#playButton.offsetWidth; // restart the animation
+      this.#playButton.classList.add('is-struck');
+    }
     this.#clock.textContent = `${formatClock(state.currentTime)} / ${formatClock(
       state.audio?.durationSec ?? 0,
     )}`;
@@ -308,7 +340,12 @@ export class TransportView {
 
     this.#followButton.classList.toggle('is-on', state.followScore);
     this.#followButton.classList.toggle('is-paused', !state.followScore);
-    this.#followButton.textContent = state.followScore ? 'Following' : 'Follow';
+    // Same reasoning as the play button: setting textContent replaces the text
+    // node, and doing that on every tick is enough to eat a click on it.
+    if (state.followScore !== this.#renderedFollow) {
+      this.#renderedFollow = state.followScore;
+      this.#followButton.textContent = state.followScore ? 'Following' : 'Follow';
+    }
     this.#followButton.disabled = state.score === null;
 
     // Labelled by what you are looking at, like the notation switch: the
