@@ -64,12 +64,13 @@ const GROUPS: readonly Group[] = [
     ],
   },
   {
-    title: 'Moving between devices',
-    note: 'A commit is one file holding a song, its lyrics, and every timing you tapped.',
+    title: 'Save files',
+    note: 'A save file holds a song’s lyrics and every timing you tapped. Saved with the song inside it, one file carries the whole thing to another machine.',
     items: [
-      { keys: ['Tracks → Commit'], what: 'Write the open song out as a file you can carry' },
-      { keys: ['Open a commit'], what: 'On the first screen of any device — brings the song with it' },
-      { keys: ['Save to file'], what: 'Work only, no audio — small enough for a synced folder' },
+      { keys: ['Save'], what: 'Write your work to its file — it asks for one the first time' },
+      { keys: ['Save As…'], what: 'Write it somewhere else; that file becomes the one Save uses' },
+      { keys: ['Tracks → Save with song'], what: 'One file with the audio inside — carries the song to another machine' },
+      { keys: ['Open a save file'], what: 'On the first screen of any device, or from the Tracks drawer' },
     ],
   },
   {

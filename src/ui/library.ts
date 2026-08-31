@@ -11,7 +11,7 @@ import {
   listTracks,
   type TrackSummary,
 } from '@/storage/library';
-import { commitFileName, embedAudio, serializeProject } from '@/storage/project';
+import { songFileName, embedAudio, serializeProject } from '@/storage/project';
 import { download } from '@/export';
 import { clear, el, formatClock } from './dom';
 
@@ -133,10 +133,10 @@ export class LibraryView {
               {
                 class: 'library__newfile',
                 type: 'button',
-                'data-tip': 'Open a commit, or a project file you saved to a folder',
+                'data-tip': 'Open a save file — with or without the song inside it',
                 onclick: () => this.#callbacks.onOpenProject?.(),
               },
-              'Open a commit…',
+              'Open a save file…',
             ),
             el(
               'button',
@@ -275,20 +275,20 @@ export class LibraryView {
     const actions = el(
       'div',
       { class: 'library__actions' },
-      // A commit is only worth offering when there is a song to put in it.
+      // Only worth offering when there is a song to put in the file.
       track.hasAudio
         ? el(
             'button',
             {
-              class: 'library__action library__action--commit',
+              class: 'library__action library__action--song',
               type: 'button',
               'data-tip':
-                `Commit ${track.title} and take it with you\n` +
+                `Save ${track.title} with the song inside it\n` +
                 'One file holding the words, timings and the song itself — ' +
                 'open it on your phone and everything is there',
-              onclick: () => void this.#commit(track),
+              onclick: () => void this.#saveWithSong(track),
             },
-            'Commit',
+            'Save with song',
           )
         : null,
       track.hasAudio
@@ -323,25 +323,25 @@ export class LibraryView {
    *
    * The normal project file leaves the audio out, because the fingerprint
    * finds it again on a machine that already has it. A device you have never
-   * opened this song on cannot do that, so a commit carries the song along —
+   * opened this song on cannot do that, so this file carries the song along —
    * which is the whole difference between arriving with your work and
    * arriving with a file that asks you for an MP3 you left at home.
    */
-  async #commit(track: TrackSummary): Promise<void> {
-    this.#summary.textContent = `Committing ${track.title}…`;
+  async #saveWithSong(track: TrackSummary): Promise<void> {
+    this.#summary.textContent = `Saving ${track.title}…`;
     try {
       const [record, blob] = await Promise.all([getTrack(track.id), getTrackAudio(track.id)]);
       if (!record || !blob) {
-        this.#summary.textContent = 'That track has no stored audio to commit.';
+        this.#summary.textContent = 'That track has no stored audio to save.';
         return;
       }
       const audio = await embedAudio(blob, record.fileName);
-      download(commitFileName(record.title), serializeProject(record, audio), 'application/json');
+      download(songFileName(record.title), serializeProject(record, audio), 'application/json');
       this.#summary.textContent =
-        `${track.title} committed — ${formatBytes(blob.size)} of song included. ` +
+        `${track.title} saved — ${formatBytes(blob.size)} of song included. ` +
         'Open it on your other device.';
     } catch {
-      this.#summary.textContent = 'That track could not be committed.';
+      this.#summary.textContent = 'That track could not be saved.';
     }
   }
 

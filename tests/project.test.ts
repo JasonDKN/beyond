@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commitFileName, parseProject, projectFileName, serializeProject } from '@/storage/project';
+import { songFileName, parseProject, projectFileName, serializeProject } from '@/storage/project';
 import type { TrackRecord } from '@/storage/library';
 
 /**
@@ -116,7 +116,7 @@ describe('commits — a project with the song inside it', () => {
   });
 
   it('names a commit distinctly from a plain project', () => {
-    expect(commitFileName('Please')).toBe('Please.beyond-commit.json');
-    expect(commitFileName('안녕 / hi?')).toBe('hi.beyond-commit.json');
+    expect(songFileName('Please')).toBe('Please.beyond-song.json');
+    expect(songFileName('안녕 / hi?')).toBe('hi.beyond-song.json');
   });
 });

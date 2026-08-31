@@ -321,13 +321,13 @@
   margin-top: var(--space-2);
 }
 
-.dropzone__button--commit {
+.dropzone__button--save {
   border-color: rgba(140, 168, 232, 0.4);
   background: rgba(140, 168, 232, 0.08);
   color: var(--paper-dim);
 }
 
-.dropzone__button--commit:hover {
+.dropzone__button--save:hover {
   border-color: rgba(140, 168, 232, 0.85);
   box-shadow: 0 12px 32px -18px rgba(140, 168, 232, 0.9);
   color: var(--paper);

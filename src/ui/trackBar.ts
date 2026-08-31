@@ -18,6 +18,7 @@ export interface TrackBarCallbacks {
   onOpenFile(): void;
   /** Save this track's work to a file on disk. */
   onSaveToFile(): void;
+  onSaveAs(): void;
   onToggleHelp(): void;
 }
 
@@ -28,6 +29,7 @@ export class TrackBarView {
   #save: HTMLElement;
   #tracksButton: HTMLButtonElement;
   #saveFileButton: HTMLButtonElement;
+  #saveAsButton: HTMLButtonElement;
   #lastLabel = '';
   /** Name of the project file this track is linked to, if any. */
   #linkedFile: string | null = null;
@@ -47,15 +49,34 @@ export class TrackBarView {
       'Tracks',
     ) as HTMLButtonElement;
 
+    /*
+     * Save, and Save As, as two controls rather than one that changes meaning.
+     *
+     * The single button used to relabel itself once a file was linked, which
+     * made the common action — write my work to the file it already lives in —
+     * the one you had to read the button to find. Save always saves. Save As
+     * always asks where.
+     */
     this.#saveFileButton = el(
       'button',
       {
         class: 'trackbar__button trackbar__button--file',
         type: 'button',
-        'data-tip': 'Save this track to a file in a folder of your choosing',
+        'data-tip': 'Save this track to its file\nIf it has no file yet, this asks for one',
         onclick: () => callbacks.onSaveToFile(),
       },
-      'Save to file',
+      'Save',
+    ) as HTMLButtonElement;
+
+    this.#saveAsButton = el(
+      'button',
+      {
+        class: 'trackbar__button trackbar__button--saveas',
+        type: 'button',
+        'data-tip': 'Save this track to a different file\nThe new file becomes the one Save writes to',
+        onclick: () => callbacks.onSaveAs(),
+      },
+      'Save As…',
     ) as HTMLButtonElement;
 
     this.element = el(
@@ -74,6 +95,7 @@ export class TrackBarView {
         'New song',
       ),
       this.#saveFileButton,
+      this.#saveAsButton,
       el(
         'button',
         {
@@ -110,12 +132,14 @@ export class TrackBarView {
   /**
    * Show which file this track writes to.
    *
-   * Once linked, every later save goes to that file automatically, so the
-   * button changes from an action to a statement of where the work lives.
+   * Once linked, every later Save goes to that file automatically, and the
+   * name appears beside the clock so the work has a visible home.
    */
   setLinkedFile(name: string | null): void {
     this.#linkedFile = name;
-    this.#saveFileButton.textContent = name ? 'Save as…' : 'Save to file';
+    // Save always means the same thing; only its target changes. Save As is a
+    // separate control beside it, so neither has to be hunted for.
+    this.#saveFileButton.textContent = 'Save';
     this.#saveFileButton.classList.toggle('is-linked', name !== null);
   }
 }

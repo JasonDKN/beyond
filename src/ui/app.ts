@@ -41,6 +41,7 @@ import { StaffView } from './staff';
 import { StatusView } from './status';
 import { SyllableGridView } from './syllableGrid';
 import { TransportView } from './transport';
+import { setFaviconPlaying } from './favicon';
 import { loadHiddenWaveforms, saveHiddenWaveforms, toggleWaveform } from './waveform';
 
 /**
@@ -191,8 +192,8 @@ export function mountApp(root: HTMLElement): void {
 
   const dropzone = new DropzoneView({
     onFile: openFile,
-    // The way in on a device that has never seen this song: a commit brings
-    // the audio with it, so nothing is asked for and nothing is missing.
+    // The way in on a device that has never seen this song: a save file with
+    // the song inside brings the audio too, so nothing is missing.
     onProjectFile: (file) => openProjectFile(file, null),
   });
 
@@ -304,14 +305,29 @@ export function mountApp(root: HTMLElement): void {
       projectHandle = null;
       projectTrackId = null;
       trackBar.setLinkedFile(null);
-      store.patch({ notice: 'Lost the link to the project file — use Save to file again.' });
+      store.patch({ notice: 'Lost the link to that file — use Save As… to pick a new one.' });
     }
   };
 
-  const saveToFile = (): void => {
+  /**
+   * Save, and Save As.
+   *
+   * Save writes to the file this track already lives in and says nothing;
+   * that is the whole point of having saved once. Only when there is no file
+   * yet does it have to ask, which is the one case where Save and Save As
+   * mean the same thing.
+   */
+  const saveToFile = (askWhere: boolean): void => {
     void (async () => {
       const record = await currentRecord();
       if (!record) return;
+
+      // Already has a home, and we were not asked to move it.
+      if (!askWhere && projectHandle && projectTrackId === record.id) {
+        await writeProjectFile();
+        store.patch({ notice: `Saved to ${projectHandle?.name ?? 'its file'}.` });
+        return;
+      }
 
       if (!canWriteFiles()) {
         // Firefox and Safari cannot write to a picked file, so fall back to a
@@ -414,7 +430,8 @@ export function mountApp(root: HTMLElement): void {
       if (opening) void drawer.refresh();
     },
     onOpenFile: pickFile,
-    onSaveToFile: saveToFile,
+    onSaveToFile: () => saveToFile(false),
+    onSaveAs: () => saveToFile(true),
     onToggleHelp: () => help.setOpen(!help.isOpen),
   });
 
@@ -477,7 +494,7 @@ export function mountApp(root: HTMLElement): void {
     status.element,
   );
 
-  // Mirror every committed save into the linked project file, debounced so a
+  // Mirror every stored save into the linked save file, debounced so a
   // burst of taps writes once rather than forty times.
   store.events.on('change', (state) => {
     if (state.saveState !== 'saved' || !projectHandle) return;
@@ -542,6 +559,9 @@ export function mountApp(root: HTMLElement): void {
     document.body.classList.toggle('mode-practice', state.mode === 'practice');
     // The mark in the masthead breathes while there is work in flight.
     document.body.classList.toggle('is-working', state.status === 'working');
+    // …and the one in the tab flips while a song is running, so a browser full
+    // of tabs still says which of them is the one making noise.
+    setFaviconPlaying(state.playing);
     // Folded per view, so the class has to be recomputed whenever either the
     // view or the preference changes — which is what this render already is.
     document.body.classList.toggle(

@@ -16,7 +16,7 @@ import { saveTrack, type TrackRecord } from './library';
  * have. On opening a project the audio is found in the library by fingerprint,
  * or asked for once and then cached, after which it opens in a click.
  *
- * A commit is the same file with the song inside it.
+ * A save file can also carry the song inside it.
  *
  * That exception exists for one situation: you built a fortnight of work on a
  * machine you are about to leave behind. The fingerprint that normally
@@ -27,11 +27,11 @@ import { saveTrack, type TrackRecord } from './library';
  *
  * The audio rides as base64, which costs a third more bytes than the raw file
  * and saves writing a zip container and its reader. For one song that trade is
- * obviously right; it is why commits are per song rather than per library.
+ * obviously right; it is why save files are per song rather than per library.
  */
 
 export const PROJECT_EXTENSION = '.beyond.json';
-export const COMMIT_EXTENSION = '.beyond-commit.json';
+export const SONG_EXTENSION = '.beyond-song.json';
 
 /** Audio carried inside a project file, for moving a song between devices. */
 interface EmbeddedAudio {
@@ -84,7 +84,7 @@ export function serializeProject(record: TrackRecord, audio?: EmbeddedAudio): st
 
 export interface OpenedProject {
   readonly track: ProjectFile['track'];
-  /** Present when the file was a commit rather than a plain project. */
+  /** Present when the file carried the song inside it. */
   readonly audio: Blob | null;
   readonly audioFileName: string | null;
 }
@@ -102,7 +102,7 @@ export function parseProject(json: string): OpenedProject {
   }
 
   // A version 1 file has no audio and never did; that is not a fault. Files
-  // written before this was called a commit still open, whatever they are named.
+  // written under older names still open, whatever they are called.
   const packed = project.audio;
   if (!packed?.data) {
     return { track: project.track, audio: null, audioFileName: null };
@@ -121,7 +121,7 @@ export function parseProject(json: string): OpenedProject {
   }
 }
 
-/** Wrap a file up so it can travel inside a commit. */
+/** Wrap a file up so it can travel inside a save file. */
 export async function embedAudio(blob: Blob, fileName: string): Promise<EmbeddedAudio> {
   return {
     fileName,
@@ -158,9 +158,9 @@ async function toBase64(blob: Blob): Promise<string> {
 }
 
 /** A recognisable filename for a commit. */
-export function commitFileName(title: string): string {
+export function songFileName(title: string): string {
   const safe = title.replace(/[^\w\-. ]+/g, '').trim() || 'track';
-  return `${safe}${COMMIT_EXTENSION}`;
+  return `${safe}${SONG_EXTENSION}`;
 }
 
 /** A safe, recognisable filename for a track. */
