@@ -286,6 +286,42 @@ export class EmptyWriteError extends Error {
   }
 }
 
+/**
+ * Write a save file out, asking where it should go.
+ *
+ * Both routes to a save file end up here, so both behave the same way: they
+ * ask where the file goes, and they write the same bytes. The one thing Save
+ * As does on top is remember the file it wrote, so later Saves go there
+ * silently — and that is a difference in what happens *afterwards*, not in
+ * what lands on disk.
+ *
+ * Returns the name written, or null if the picker was dismissed. On a browser
+ * that cannot write to a picked file, and on a write that came out empty, this
+ * falls back to an ordinary download rather than failing.
+ */
+export async function writeOut(
+  fileName: string,
+  contents: string,
+  onDownloadInstead: (name: string, contents: string) => void,
+): Promise<string | null> {
+  if (!canWriteFiles()) {
+    onDownloadInstead(fileName, contents);
+    return fileName;
+  }
+
+  const handle = await pickSaveHandle(fileName);
+  if (!handle) return null;
+
+  try {
+    await writeHandle(handle, contents);
+    return handle.name;
+  } catch {
+    // Whatever went wrong, do not leave with nothing.
+    onDownloadInstead(fileName, contents);
+    return fileName;
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 /**

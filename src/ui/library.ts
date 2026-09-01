@@ -11,7 +11,13 @@ import {
   listTracks,
   type TrackSummary,
 } from '@/storage/library';
-import { embedAudio, MAX_EMBED_BYTES, projectFileName, serializeProject } from '@/storage/project';
+import {
+  embedAudio,
+  MAX_EMBED_BYTES,
+  projectFileName,
+  serializeProject,
+  writeOut,
+} from '@/storage/project';
 import { download } from '@/export';
 import { clear, el, formatClock } from './dom';
 
@@ -284,8 +290,9 @@ export class LibraryView {
               type: 'button',
               'data-tip':
                 `Save ${track.title} to a file\n` +
-                'The words, the timings and the song itself, all in one — ' +
-                'open it on your phone and everything is there',
+                'The words, the timings and the song itself, all in one\n' +
+                'Same file as Save As… — this one just does not become\n' +
+                'the file that Save keeps writing to',
               onclick: () => void this.#saveWithSong(track),
             },
             'Save to a file',
@@ -343,12 +350,24 @@ export class LibraryView {
       // work is the part that took an evening.
       const embeddable = blob && blob.size <= MAX_EMBED_BYTES ? blob : null;
       const audio = embeddable ? await embedAudio(embeddable, record.fileName) : undefined;
-      download(projectFileName(record.title), serializeProject(record, audio), 'application/json');
+
+      // Same bytes as Save As, and the same question about where they go.
+      // The only thing Save As does on top is remember the file afterwards.
+      const written = await writeOut(
+        projectFileName(record.title),
+        serializeProject(record, audio),
+        (name, contents) => download(name, contents, 'application/json'),
+      );
+      if (!written) {
+        this.#summary.textContent = '';
+        return;
+      }
+
       this.#summary.textContent = embeddable
-        ? `${track.title} saved — ${formatBytes(embeddable.size)} of song included. ` +
-          'Open it on your other device.'
-        : `${track.title} saved. The song itself is not in the file, so the other ` +
-          'device will ask for it once.';
+        ? `${track.title} saved to ${written} — ${formatBytes(embeddable.size)} of song ` +
+          'included. Open it on your other device.'
+        : `${track.title} saved to ${written}. The song itself is not in the file, so the ` +
+          'other device will ask for it once.';
     } catch {
       this.#summary.textContent = 'That track could not be saved.';
     }

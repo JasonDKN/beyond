@@ -396,9 +396,19 @@ export function mountApp(root: HTMLElement): void {
    * So there is one file now, and it is the complete one.
    */
   const projectContents = async (record: TrackRecord): Promise<string> => {
-    if (!record.hasAudio) return serializeProject(record);
-
     if (encodedAudio?.trackId !== record.id) {
+      /*
+       * Ask the audio store, not the record's flag.
+       *
+       * `hasAudio` is a denormalised copy kept on the track record, and it is
+       * only ever set by the call that stores a blob — so any route that puts
+       * audio in the store without going through that call, or any record
+       * rebuilt from a backup, leaves it false while the song sits there. The
+       * flag is fine for drawing a badge in the drawer. Deciding whether the
+       * song goes into somebody's save file is not a job for a cache that can
+       * drift: it made Save As quietly write a file without the song while the
+       * drawer, which asks the store directly, wrote the complete one.
+       */
       const blob = await getTrackAudio(record.id);
       if (!blob || blob.size > MAX_EMBED_BYTES) {
         // No stored audio, or more than a tab should hold three copies of.
