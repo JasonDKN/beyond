@@ -17,6 +17,8 @@ export class TransportView {
   #loopB: HTMLButtonElement;
   #loopClear: HTMLButtonElement;
   #pendingA: number | null = null;
+  /** The loop start last adopted from the store, so we adopt it only once. */
+  #lastLoopStart: number | null = null;
   #volume: HTMLInputElement;
   #volumeIcon: HTMLButtonElement;
   /** Level to restore when unmuting. */
@@ -417,7 +419,32 @@ export class TransportView {
     );
     this.#fullscreenButton.disabled = state.score === null;
 
+    /*
+     * Both ends light when a loop exists, wherever it came from.
+     *
+     * A's lit state used to be set by hand, in A's own click handler — so a
+     * loop made any other way (shift-clicking a part of the song, most
+     * obviously) lit B and left A dark, which reads as half a loop. It was not:
+     * the loop was complete and running. The buttons were describing which
+     * button had been pressed rather than what the song is doing, and only one
+     * of those is worth showing.
+     *
+     * A on its own still lights while it is armed and waiting for B, because
+     * that genuinely is a half-set loop.
+     */
     const looping = state.loop !== null;
+    /*
+     * Adopt an externally-set start, so pressing B afterwards moves *that*
+     * loop's end rather than resurrecting some older A from earlier on.
+     *
+     * Only when it changes, though. Adopting on every tick would overwrite a
+     * fresh A pressed in the middle of a running loop — which is exactly how
+     * you tighten a loop you are already drilling.
+     */
+    const start = state.loop?.start ?? null;
+    if (start !== null && start !== this.#lastLoopStart) this.#pendingA = start;
+    this.#lastLoopStart = start;
+    this.#loopA.classList.toggle('is-set', looping || this.#pendingA !== null);
     this.#loopB.classList.toggle('is-set', looping);
     this.#loopClear.disabled = !looping && this.#pendingA === null;
     this.element.classList.toggle('is-looping', looping);

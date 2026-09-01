@@ -44,6 +44,36 @@ const WINDOW: Record<FullscreenLayout, readonly number[]> = {
 /** How long the controls stay after you stop touching anything, while playing. */
 const IDLE_MS = 2600;
 
+/** How far a finger has to travel before it counts as a swipe and not a tap. */
+const SWIPE_PX = 60;
+/** And how much more horizontal than vertical, so a scroll is never a step. */
+const SWIPE_RATIO = 1.6;
+/** Two taps closer together than this are a double-tap. */
+const DOUBLE_TAP_MS = 320;
+
+/**
+ * The legend, in the language of whatever you are holding.
+ *
+ * Keys on a desktop, gestures on a phone — and never both, because a legend
+ * listing keys to somebody holding a phone is worse than no legend at all. Both
+ * are built and CSS picks, rather than JavaScript sniffing the device: a laptop
+ * with a touchscreen answers `pointer: coarse` truthfully for the pointer being
+ * used, which is the actual question.
+ */
+const KEY_LEGEND: readonly (readonly [string, string])[] = [
+  ['Space', 'Play / pause'],
+  ['← →', 'Back / forward 3s'],
+  [', .', 'Previous / next line'],
+  ['[  ]  \\', 'Loop start, end, clear'],
+  ['Esc', 'Leave fullscreen'],
+];
+
+const TOUCH_LEGEND: readonly (readonly [string, string])[] = [
+  ['Swipe ←→', 'Previous / next line'],
+  ['Double-tap', 'Play / pause'],
+  ['⋯', 'Speed, loop, layers'],
+];
+
 export interface FullscreenCallbacks {
   onExit(): void;
   onStepLine(delta: number): void;
@@ -70,6 +100,8 @@ export class FullscreenView {
   #layerButtons = new Map<keyof State['layers'], HTMLButtonElement>();
 
   #pendingA: number | null = null;
+  /** The loop start last adopted from the store, so we adopt it only once. */
+  #lastLoopStart: number | null = null;
   #renderedKey = '';
   #renderedPlaying: boolean | null = null;
   /** Line index → the word nodes drawn for it, for the wipe. */
@@ -236,7 +268,16 @@ export class FullscreenView {
       ),
     );
 
-    this.element = el('div', { class: 'fs', hidden: true }, this.#stage, this.#bar);
+    this.element = el(
+      'div',
+      { class: 'fs', hidden: true },
+      legend('fs__legend--keys', KEY_LEGEND),
+      legend('fs__legend--touch', TOUCH_LEGEND),
+      this.#stage,
+      this.#bar,
+    );
+
+    this.#bindGestures();
 
     /*
      * The controls get out of the way while you are singing.
@@ -248,6 +289,58 @@ export class FullscreenView {
     for (const kind of ['pointermove', 'pointerdown', 'touchstart', 'keydown'] as const) {
       this.element.addEventListener(kind, () => this.#wake(), { passive: true });
     }
+  }
+
+  /**
+   * The two things a phone can do that a bar cannot.
+   *
+   * Both exist because the controls hide themselves while the song plays, and a
+   * screen with no controls on it needs *some* answer to "next line" that does
+   * not begin with waking the bar up. They are on the stage rather than the
+   * whole overlay so that dragging a slider in the bar is never read as a
+   * swipe across the words.
+   */
+  #bindGestures(): void {
+    let startX = 0;
+    let startY = 0;
+    let startT = 0;
+    let lastTapAt = 0;
+
+    this.#stage.addEventListener(
+      'pointerdown',
+      (event: PointerEvent) => {
+        startX = event.clientX;
+        startY = event.clientY;
+        startT = event.timeStamp;
+      },
+      { passive: true },
+    );
+
+    this.#stage.addEventListener(
+      'pointerup',
+      (event: PointerEvent) => {
+        const dx = event.clientX - startX;
+        const dy = event.clientY - startY;
+
+        // A swipe: far enough, and clearly sideways rather than a scroll.
+        if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy) * SWIPE_RATIO) {
+          // Leftwards moves forward, the way a page of anything turns.
+          this.#callbacks.onStepLine(dx < 0 ? 1 : -1);
+          lastTapAt = 0;
+          return;
+        }
+
+        // A tap: barely moved, and quick. Two of them toggle playback.
+        if (Math.abs(dx) > 12 || Math.abs(dy) > 12 || event.timeStamp - startT > 500) return;
+        if (event.timeStamp - lastTapAt < DOUBLE_TAP_MS) {
+          this.#player.toggle();
+          lastTapAt = 0;
+          return;
+        }
+        lastTapAt = event.timeStamp;
+      },
+      { passive: true },
+    );
   }
 
   #buildLayerToggles(): HTMLElement[] {
@@ -335,6 +428,13 @@ export class FullscreenView {
     this.#clock.textContent = `${formatClock(state.currentTime)} / ${formatClock(
       state.audio?.durationSec ?? 0,
     )}`;
+
+    // Both ends light when a loop exists, wherever it was made — see the same
+    // reasoning in transport.ts. A alone means armed and waiting for B.
+    const start = state.loop?.start ?? null;
+    if (start !== null && start !== this.#lastLoopStart) this.#pendingA = start;
+    this.#lastLoopStart = start;
+    this.#loopA.classList.toggle('is-set', state.loop !== null || this.#pendingA !== null);
     this.#loopB.classList.toggle('is-set', state.loop !== null);
 
     const teleprompter = state.fullscreenLayout === 'teleprompter';
@@ -449,6 +549,25 @@ export class FullscreenView {
       if (this.#store.state.playing) this.element.classList.add('is-idle');
     }, IDLE_MS);
   }
+}
+
+/**
+ * A small card of what you can do, off in the corner.
+ *
+ * It fades out with the control bar once the song is running and you have gone
+ * quiet, so it teaches on the way in and then gets out of the way — which is
+ * the only honest shape for a legend on a screen whose whole purpose is having
+ * nothing on it but the words.
+ */
+function legend(variant: string, items: readonly (readonly [string, string])[]): HTMLElement {
+  return el(
+    'dl',
+    { class: `fs__legend ${variant}`, 'aria-label': 'Shortcuts' },
+    ...items.flatMap(([keys, what]) => [
+      el('dt', { class: 'fs__legend-keys' }, keys),
+      el('dd', { class: 'fs__legend-what' }, what),
+    ]),
+  );
 }
 
 const LAYOUT_KEY = 'beyond.fullscreen-layout';

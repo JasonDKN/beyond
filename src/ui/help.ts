@@ -64,6 +64,9 @@ const GROUPS: readonly Group[] = [
       { keys: ['F2'], what: 'The same, for when the letters are busy' },
       { keys: ['Esc'], what: 'Leave' },
       { keys: ['Teleprompter / Karaoke'], what: 'Switch layouts — remembered across songs' },
+      { keys: ['Swipe ←→'], what: 'On a touchscreen: previous or next line' },
+      { keys: ['Double-tap'], what: 'On a touchscreen: play or pause' },
+      { keys: ['⋯'], what: 'On a phone: speed, loop and the layer switches' },
     ],
   },
   {

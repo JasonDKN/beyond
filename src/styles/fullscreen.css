@@ -153,6 +153,70 @@
   color: var(--mint);
 }
 
+/* --- The legend ---------------------------------------------------------- */
+/*
+ * What you can do, in the corner, in the language of whatever you are holding.
+ *
+ * Both legends are in the markup and CSS picks one, because the honest question
+ * is not "what device is this" but "what is being pointed with" — and a laptop
+ * with a touchscreen answers that correctly either way.
+ *
+ * It fades with the bar, so it teaches on the way in and then leaves. A legend
+ * that stayed lit over the words would be arguing with the entire point of a
+ * screen that exists to have nothing on it but the words.
+ */
+
+.fs__legend {
+  position: absolute;
+  top: max(var(--space-4), env(safe-area-inset-top));
+  left: max(var(--space-4), env(safe-area-inset-left));
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 0.3rem 0.7rem;
+  margin: 0;
+  padding: var(--space-3);
+  border: var(--border-soft);
+  border-radius: var(--radius-md);
+  background: rgba(9, 12, 26, 0.5);
+  font-family: var(--font-ui);
+  font-size: var(--step--1);
+  pointer-events: none;
+  transition: opacity var(--duration-mid) var(--ease-out);
+}
+
+.fs__legend-keys {
+  margin: 0;
+  color: var(--paper-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fs__legend-what {
+  margin: 0;
+  color: var(--ghost);
+}
+
+.fs.is-idle .fs__legend {
+  opacity: 0;
+}
+
+/* One or the other, never both. */
+.fs__legend--touch {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .fs__legend--keys {
+    display: none;
+  }
+
+  .fs__legend--touch {
+    display: grid;
+  }
+}
+
 /* --- The bar ------------------------------------------------------------- */
 
 .fs__bar {
@@ -469,6 +533,15 @@
   .fs.is-karaoke .fs__line--past,
   .fs.is-karaoke .fs__line--next ~ .fs__line--next ~ .fs__line--next {
     display: none;
+  }
+
+  /* The legend is competing with the words for the same inches here, so it
+     gives up its padding rather than any of its rows. */
+  .fs__legend {
+    top: var(--space-2);
+    left: max(var(--space-2), env(safe-area-inset-left));
+    padding: var(--space-2);
+    gap: 0.15rem 0.5rem;
   }
 }
 
