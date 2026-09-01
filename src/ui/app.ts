@@ -343,6 +343,31 @@ export function mountApp(root: HTMLElement): void {
   let projectTrackId: string | null = null;
   let projectWriteTimer = 0;
 
+  /**
+   * One write to the save file at a time, in order.
+   *
+   * Two things write to it: pressing Save, and the debounced mirror that
+   * follows every autosave. Nothing stopped them overlapping, and overlapping
+   * is genuinely destructive here — `createWritable` truncates the target the
+   * moment it is called, so a second write opening while the first is still
+   * streaming leaves the two of them interleaving into one file. The visible
+   * result is a save that reports success and leaves nothing behind, which is
+   * exactly the symptom, and it needs no sync client to explain it: just a
+   * write that took longer than the 800 ms debounce.
+   *
+   * Chaining them costs nothing — the second write is writing the same record
+   * a moment later anyway — and makes the failure impossible rather than
+   * merely unlikely.
+   */
+  let writeQueue: Promise<unknown> = Promise.resolve();
+
+  const queueWrite = <T,>(job: () => Promise<T>): Promise<T> => {
+    // `then(job, job)` so a rejected predecessor still lets the next one run.
+    const next = writeQueue.then(job, job);
+    writeQueue = next.catch(() => undefined);
+    return next;
+  };
+
   const currentRecord = async (): Promise<TrackRecord | null> => {
     const id = store.state.trackId;
     return id ? getTrack(id) : null;
@@ -354,46 +379,45 @@ export function mountApp(root: HTMLElement): void {
    * Returns whether the work is on disk, because a save that quietly did
    * nothing is the one outcome worth interrupting somebody over.
    */
-  const writeProjectFile = async (): Promise<boolean> => {
-    if (!projectHandle || projectTrackId !== store.state.trackId) return false;
-    const record = await currentRecord();
-    if (!record) return false;
-    const contents = serializeProject(record);
-    try {
-      await writeHandle(projectHandle, contents);
-      return true;
-    } catch (error) {
-      const name = projectHandle.name;
-      // The file may have been moved or permission withdrawn — or the write
-      // may have gone through and produced nothing, which is what a sync
-      // client can do to a file being replaced under it.
-      projectHandle = null;
-      projectTrackId = null;
-      trackBar.setLinkedFile(null);
+  const writeProjectFile = (): Promise<boolean> =>
+    queueWrite(async () => {
+      if (!projectHandle || projectTrackId !== store.state.trackId) return false;
+      const record = await currentRecord();
+      if (!record) return false;
+      const contents = serializeProject(record);
+      try {
+        await writeHandle(projectHandle, contents);
+        return true;
+      } catch (error) {
+        const name = projectHandle.name;
+        // The file may have been moved, permission withdrawn, or the write may
+        // have reported success and produced nothing.
+        projectHandle = null;
+        projectTrackId = null;
+        trackBar.setLinkedFile(null);
 
-      if (error instanceof EmptyWriteError) {
-        /*
-         * Do not leave with nothing.
-         *
-         * The file system route just produced an empty file, so take the other
-         * one: a plain download goes through the browser's own machinery and
-         * never touches the target directly. It costs a trip to the Downloads
-         * folder and it means the work exists somewhere.
-         */
-        download(projectFileName(record.title), contents, 'application/json');
-        store.patch({
-          notice:
-            `${name} came out empty, so your work has been downloaded instead. ` +
-            'That usually means a sync folder — OneDrive, Dropbox — got in the way. ' +
-            'Save As… somewhere local works too.',
-        });
+        if (error instanceof EmptyWriteError) {
+          /*
+           * Do not leave with nothing.
+           *
+           * The file system route just produced an empty file, so take the
+           * other one: a plain download goes through the browser's own
+           * machinery and never touches the target directly. It costs a trip
+           * to the Downloads folder and it means the work exists somewhere.
+           */
+          download(projectFileName(record.title), contents, 'application/json');
+          store.patch({
+            notice:
+              `${name} came out empty, so your work has been downloaded instead. ` +
+              'Open that file to carry on from it.',
+          });
+          return false;
+        }
+
+        store.patch({ notice: `Could not write ${name}. Use Save As… to pick a new file.` });
         return false;
       }
-
-      store.patch({ notice: `Could not write ${name}. Use Save As… to pick a new file.` });
-      return false;
-    }
-  };
+    });
 
   /**
    * Save, and Save As.
