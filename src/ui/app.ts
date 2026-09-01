@@ -18,6 +18,7 @@ import {
 import {
   adoptProject,
   canWriteFiles,
+  EmptyWriteError,
   parseProject,
   pickOpenHandle,
   pickSaveHandle,
@@ -347,20 +348,50 @@ export function mountApp(root: HTMLElement): void {
     return id ? getTrack(id) : null;
   };
 
-  /** Write the current track to its linked file. Silent — no picker. */
-  const writeProjectFile = async (): Promise<void> => {
-    if (!projectHandle || projectTrackId !== store.state.trackId) return;
+  /**
+   * Write the current track to its linked file. Silent — no picker.
+   *
+   * Returns whether the work is on disk, because a save that quietly did
+   * nothing is the one outcome worth interrupting somebody over.
+   */
+  const writeProjectFile = async (): Promise<boolean> => {
+    if (!projectHandle || projectTrackId !== store.state.trackId) return false;
     const record = await currentRecord();
-    if (!record) return;
+    if (!record) return false;
+    const contents = serializeProject(record);
     try {
-      await writeHandle(projectHandle, serializeProject(record));
-    } catch {
-      // The file may have been moved or permission withdrawn. Drop the link
-      // rather than failing silently on every future save.
+      await writeHandle(projectHandle, contents);
+      return true;
+    } catch (error) {
+      const name = projectHandle.name;
+      // The file may have been moved or permission withdrawn — or the write
+      // may have gone through and produced nothing, which is what a sync
+      // client can do to a file being replaced under it.
       projectHandle = null;
       projectTrackId = null;
       trackBar.setLinkedFile(null);
-      store.patch({ notice: 'Lost the link to that file — use Save As… to pick a new one.' });
+
+      if (error instanceof EmptyWriteError) {
+        /*
+         * Do not leave with nothing.
+         *
+         * The file system route just produced an empty file, so take the other
+         * one: a plain download goes through the browser's own machinery and
+         * never touches the target directly. It costs a trip to the Downloads
+         * folder and it means the work exists somewhere.
+         */
+        download(projectFileName(record.title), contents, 'application/json');
+        store.patch({
+          notice:
+            `${name} came out empty, so your work has been downloaded instead. ` +
+            'That usually means a sync folder — OneDrive, Dropbox — got in the way. ' +
+            'Save As… somewhere local works too.',
+        });
+        return false;
+      }
+
+      store.patch({ notice: `Could not write ${name}. Use Save As… to pick a new file.` });
+      return false;
     }
   };
 
@@ -379,8 +410,10 @@ export function mountApp(root: HTMLElement): void {
 
       // Already has a home, and we were not asked to move it.
       if (!askWhere && projectHandle && projectTrackId === record.id) {
-        await writeProjectFile();
-        store.patch({ notice: `Saved to ${projectHandle?.name ?? 'its file'}.` });
+        const name = projectHandle.name;
+        // Only say it saved if it saved. writeProjectFile has already
+        // explained itself if it did not.
+        if (await writeProjectFile()) store.patch({ notice: `Saved to ${name}.` });
         return;
       }
 
@@ -396,8 +429,9 @@ export function mountApp(root: HTMLElement): void {
       projectHandle = handle;
       projectTrackId = record.id;
       trackBar.setLinkedFile(handle.name);
-      await writeProjectFile();
-      store.patch({ notice: `Saving to ${handle.name} from now on.` });
+      if (await writeProjectFile()) {
+        store.patch({ notice: `Saving to ${handle.name} from now on.` });
+      }
     })();
   };
 

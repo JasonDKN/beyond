@@ -225,10 +225,46 @@ export async function pickOpenHandle(): Promise<FileSystemFileHandle | null> {
   }
 }
 
+/**
+ * Write to a picked file, and check that it actually landed.
+ *
+ * `showSaveFilePicker` creates the file the moment you confirm the dialog, so
+ * an empty file exists before a single byte is written. If anything then goes
+ * wrong — and on Windows something does, because `createWritable` works by
+ * writing to a swap file and renaming it over the target, which sync clients
+ * like OneDrive and Dropbox are known to interfere with — what you are left
+ * with is a real file, with the right name, containing nothing.
+ *
+ * That is the worst possible failure for a save: it looks exactly like success.
+ * You only find out when you try to send the file somewhere and it is refused
+ * for being empty, by which time you may have closed the song.
+ *
+ * So this reads the file back and refuses to call it saved unless something is
+ * in it. Callers can then fall back to a plain download, which goes through the
+ * browser's own download machinery and does not touch the file system directly.
+ */
 export async function writeHandle(handle: FileSystemFileHandle, contents: string): Promise<void> {
   const writable = await handle.createWritable();
-  await writable.write(contents);
-  await writable.close();
+  try {
+    await writable.write(contents);
+  } finally {
+    // Always close, even if the write threw — an unclosed writable leaves the
+    // swap file behind and the target at zero.
+    await writable.close();
+  }
+
+  const written = await handle.getFile();
+  if (contents.length > 0 && written.size === 0) {
+    throw new EmptyWriteError(handle.name);
+  }
+}
+
+/** A write that reported success and produced an empty file. */
+export class EmptyWriteError extends Error {
+  constructor(readonly fileName: string) {
+    super(`${fileName} was written but came out empty.`);
+    this.name = 'EmptyWriteError';
+  }
 }
 
 // ---------------------------------------------------------------------------

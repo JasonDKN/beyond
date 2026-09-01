@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { songFileName, parseProject, projectFileName, serializeProject } from '@/storage/project';
+import {
+  EmptyWriteError,
+  songFileName,
+  parseProject,
+  projectFileName,
+  serializeProject,
+  writeHandle,
+} from '@/storage/project';
 import type { TrackRecord } from '@/storage/library';
 
 /**
@@ -118,5 +125,66 @@ describe('commits — a project with the song inside it', () => {
   it('names a commit distinctly from a plain project', () => {
     expect(songFileName('Please')).toBe('Please.beyond-song.json');
     expect(songFileName('안녕 / hi?')).toBe('hi.beyond-song.json');
+  });
+});
+
+/**
+ * A save that silently produces nothing.
+ *
+ * `showSaveFilePicker` creates the file the moment the dialog is confirmed, so
+ * an empty file with the right name exists before anything is written to it.
+ * Every failure after that point therefore looks exactly like success from the
+ * outside, which is the worst possible shape for a bug in a save button: you
+ * find out when you try to send the file somewhere and it is refused.
+ */
+describe('writing to a picked file', () => {
+  /** Enough of a FileSystemFileHandle to write to, with a settable outcome. */
+  function fakeHandle(options: { landed: boolean; throwOnWrite?: boolean }) {
+    let stored = '';
+    let closed = false;
+    return {
+      name: 'song.beyond.json',
+      get closed() {
+        return closed;
+      },
+      createWritable: () =>
+        Promise.resolve({
+          write: (contents: string) => {
+            if (options.throwOnWrite) return Promise.reject(new Error('disk went away'));
+            if (options.landed) stored = contents;
+            return Promise.resolve();
+          },
+          close: () => {
+            closed = true;
+            return Promise.resolve();
+          },
+        }),
+      getFile: () => Promise.resolve({ size: stored.length }),
+    } as unknown as FileSystemFileHandle & { closed: boolean };
+  }
+
+  it('writes, and is happy when the bytes are there afterwards', async () => {
+    const handle = fakeHandle({ landed: true });
+    await expect(writeHandle(handle, '{"a":1}')).resolves.toBeUndefined();
+  });
+
+  it('refuses to call it saved when the file came out empty', async () => {
+    // What a sync client does to a file being replaced under it: the write
+    // reports success and the target is left at zero bytes.
+    const handle = fakeHandle({ landed: false });
+    await expect(writeHandle(handle, '{"a":1}')).rejects.toBeInstanceOf(EmptyWriteError);
+  });
+
+  it('closes the writable even when the write throws', async () => {
+    // An unclosed writable leaves the swap file behind and the target at zero,
+    // which is the very state this is all trying to avoid.
+    const handle = fakeHandle({ landed: false, throwOnWrite: true });
+    await expect(writeHandle(handle, '{"a":1}')).rejects.toThrow('disk went away');
+    expect(handle.closed).toBe(true);
+  });
+
+  it('accepts an empty file when there was nothing to write', async () => {
+    const handle = fakeHandle({ landed: true });
+    await expect(writeHandle(handle, '')).resolves.toBeUndefined();
   });
 });

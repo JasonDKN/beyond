@@ -134,8 +134,23 @@ export function download(filename: string, contents: string, mime: string): void
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
+  anchor.rel = 'noopener';
+  anchor.style.display = 'none';
+  /*
+   * In the document, and revoked much later.
+   *
+   * Both of these are about large files. A detached anchor works in Chrome and
+   * is refused by some other browsers outright; and revoking on the next frame
+   * gives the download about sixteen milliseconds to have started reading the
+   * blob, which is fine for a few kilobytes of JSON and a coin toss for a save
+   * file with a five-megabyte song inside it. Lose that race and the browser
+   * writes the file it already created — empty.
+   *
+   * A minute is far longer than any download needs to *begin*, and the blob is
+   * released either way when the tab goes.
+   */
+  document.body.append(anchor);
   anchor.click();
-  // Revoke on the next frame — revoking synchronously can race the download in
-  // some browsers.
-  requestAnimationFrame(() => URL.revokeObjectURL(url));
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
