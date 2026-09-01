@@ -84,7 +84,33 @@ export function mountApp(root: HTMLElement): void {
       saveHiddenWaveforms(next);
       store.patch({ waveformHidden: next });
     },
+    (delta) => stepLine(delta),
   );
+
+  /**
+   * Jump to the start of the line before or after the one playing.
+   *
+   * A line is the unit you practise in, so it is the unit worth stepping by —
+   * five seconds lands you in the middle of a phrase, which is exactly where
+   * you cannot start singing from.
+   *
+   * "The line playing" is the last one to have started, so stepping back from
+   * partway through a line goes to the line before it rather than restarting
+   * the current one. Predictable beats clever: Back 5 is right there for
+   * hearing the run-up again.
+   */
+  const stepLine = (delta: number): void => {
+    const lines = store.state.score?.lines ?? [];
+    if (lines.length === 0) return;
+    const now = player.currentTime;
+    let index = -1;
+    for (const [i, line] of lines.entries()) {
+      if (now + 0.05 >= line.startSec) index = i;
+    }
+    const target = Math.min(Math.max(index + delta, 0), lines.length - 1);
+    const line = lines[target];
+    if (line) player.seek(line.startSec);
+  };
   const status = new StatusView();
   const grid = new SyllableGridView((seconds) => player.seek(seconds));
 
@@ -658,6 +684,14 @@ export function mountApp(root: HTMLElement): void {
         break;
       case 'ArrowLeft':
         player.nudge(event.shiftKey ? -10 : -3);
+        break;
+      // Comma and full stop, which sit next to each other and are free — the
+      // arrows already nudge by seconds and the brackets belong to the loop.
+      case ',':
+        stepLine(-1);
+        break;
+      case '.':
+        stepLine(1);
         break;
       case 'ArrowRight':
         player.nudge(event.shiftKey ? 10 : 3);

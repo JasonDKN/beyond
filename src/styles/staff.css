@@ -272,3 +272,40 @@ body.waveform-hidden .sections {
     animation: none;
   }
 }
+
+/* --- Stepping about ------------------------------------------------------- */
+
+/*
+ * The seek buttons carry a number, so they need a little more room than a bare
+ * chevron did, and their arc is stroked rather than filled.
+ */
+.transport__button--seek .icon,
+.transport__button--line .icon {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+.transport__button--seek {
+  width: 2.2rem;
+  height: 2.2rem;
+}
+
+/*
+ * Loop, with its name on it.
+ *
+ * A and B are the convention in practice software and worth keeping — short,
+ * and either end resettable on its own — but on their own they say nothing
+ * about what they do. One small heading is cheaper than two spelled-out
+ * buttons and answers the same question.
+ */
+.transport__loop {
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.transport__loop-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}

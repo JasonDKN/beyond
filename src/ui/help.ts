@@ -48,6 +48,8 @@ const GROUPS: readonly Group[] = [
     title: 'Playback',
     items: [
       { keys: ['Space'], what: 'Play or pause' },
+      { keys: [','], what: 'Jump to the start of the previous line' },
+      { keys: ['.'], what: 'Jump to the start of the next line' },
       { keys: ['←', '→'], what: 'Nudge 3 seconds; hold Shift for 10' },
       { keys: ['['], what: 'Set the loop start here' },
       { keys: [']'], what: 'Set the loop end and start looping' },

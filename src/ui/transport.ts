@@ -1,6 +1,6 @@
 import type { Player } from '@/audio/player';
 import type { State } from '@/core/store';
-import { el, formatClock, ICONS, svgIcon } from './dom';
+import { el, formatClock, ICONS, seekIcon, svgIcon } from './dom';
 
 /** Playback controls. Deliberately few: play, scrub, slow down, zoom in. */
 export class TransportView {
@@ -40,6 +40,7 @@ export class TransportView {
     onZoom: (zoom: number) => void,
     onResumeFollow: () => void,
     onToggleWaveform: () => void,
+    onStepLine: (delta: number) => void,
   ) {
     this.#player = player;
     this.#onZoom = onZoom;
@@ -217,14 +218,33 @@ export class TransportView {
       el(
         'div',
         { class: 'transport__group' },
-        iconButton(ICONS.back, 'Back 5 seconds', () => this.#player.nudge(-5)),
+        /*
+         * Two grains of moving about, innermost first.
+         *
+         * Line steps sit closest to Play because they are the ones you reach
+         * for while practising — a line is the unit you are actually working
+         * on. The five-second jumps sit outside them, for catching the run-up
+         * into a phrase rather than the phrase itself.
+         */
+        seekButton(5, true, () => this.#player.nudge(-5)),
+        lineButton(-1, 'Previous line', () => onStepLine(-1)),
         this.#playButton,
-        iconButton(ICONS.forward, 'Forward 5 seconds', () => this.#player.nudge(5)),
+        lineButton(1, 'Next line', () => onStepLine(1)),
+        seekButton(5, false, () => this.#player.nudge(5)),
       ),
       this.#clock,
+      /*
+       * A and B, under the word they belong to.
+       *
+       * The letters are the convention in practice software and worth keeping
+       * — they are short, and either end can be reset on its own. What they
+       * lacked was any clue what they were for, which one small heading fixes
+       * without spending the width two spelled-out buttons would.
+       */
       el(
         'div',
         { class: 'transport__group transport__loop' },
+        el('span', { class: 'transport__loop-label' }, 'Loop'),
         this.#loopA,
         this.#loopB,
         this.#loopClear,
@@ -395,14 +415,37 @@ function saveVolume(level: number): void {
   }
 }
 
-function iconButton(path: string, label: string, onClick: () => void): HTMLButtonElement {
+/** A circular-arrow seek button, with the seconds written inside it. */
+function seekButton(seconds: number, back: boolean, onClick: () => void): HTMLButtonElement {
+  const label = `${back ? 'Back' : 'Forward'} ${seconds} seconds`;
   const button = el('button', {
-    class: 'transport__button',
+    class: 'transport__button transport__button--seek',
     type: 'button',
     'aria-label': label,
     'data-tip': label,
     onclick: onClick,
   });
-  button.appendChild(svgIcon(path, label));
+  button.appendChild(seekIcon(seconds, back));
   return button;
 }
+
+/** Step to the line before or after the one playing. */
+function lineButton(delta: number, label: string, onClick: () => void): HTMLButtonElement {
+  const button = el('button', {
+    class: 'transport__button transport__button--line',
+    type: 'button',
+    'aria-label': label,
+    'data-tip': `${label}\nOr press \`${delta < 0 ? ',' : '.'}\``,
+    onclick: onClick,
+  });
+  // A bar against a triangle: the same shape a track-skip has everywhere, which
+  // is exactly the gesture — jump to the edge of the next thing.
+  button.appendChild(
+    svgIcon(
+      delta < 0 ? 'M7 5h2.2v14H7zm12 0v14l-9-7z' : 'M14.8 5H17v14h-2.2zM5 5l9 7-9 7z',
+      label,
+    ),
+  );
+  return button;
+}
+
