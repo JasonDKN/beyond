@@ -57,6 +57,16 @@ const GROUPS: readonly Group[] = [
     ],
   },
   {
+    title: 'Fullscreen',
+    note: 'The words, filling the screen, with the same timings driving them. Not a fifth mode — it lifts over whatever view you are in and leaves it exactly as it was underneath. Two layouts: teleprompter gives the sung line the whole screen; karaoke weights several lines evenly, for seeing a verse whole.',
+    items: [
+      { keys: ['F'], what: 'Go fullscreen, and come back' },
+      { keys: ['F2'], what: 'The same, for when the letters are busy' },
+      { keys: ['Esc'], what: 'Leave' },
+      { keys: ['Teleprompter / Karaoke'], what: 'Switch layouts — remembered across songs' },
+    ],
+  },
+  {
     title: 'Parts of the song',
     note: 'Keep the headings in the lyrics you paste — [Intro: j-hope], [Pre-Chorus: V, Jimin] — and each part becomes a button under the waveform once its lines are timed.',
     items: [

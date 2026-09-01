@@ -42,6 +42,11 @@ import { StatusView } from './status';
 import { SyllableGridView } from './syllableGrid';
 import { TransportView } from './transport';
 import { setFaviconPlaying } from './favicon';
+import {
+  FullscreenView,
+  loadFullscreenLayout,
+  saveFullscreenLayout,
+} from './fullscreen';
 import { loadHiddenWaveforms, saveHiddenWaveforms, toggleWaveform } from './waveform';
 
 /**
@@ -85,7 +90,31 @@ export function mountApp(root: HTMLElement): void {
       store.patch({ waveformHidden: next });
     },
     (delta) => stepLine(delta),
+    () => setFullscreen(!store.state.fullscreen),
   );
+
+  const fullscreen = new FullscreenView(store, player, {
+    onExit: () => setFullscreen(false),
+    onStepLine: (delta) => stepLine(delta),
+    onSetLayout: (layout) => {
+      saveFullscreenLayout(layout);
+      store.patch({ fullscreenLayout: layout });
+    },
+  });
+
+  /**
+   * In and out of fullscreen, in one place.
+   *
+   * Order matters going in: the element has to be on screen before the browser
+   * will hand it the display, so the state changes first and the request
+   * follows. Both callers — the button and the keys — go through here so the
+   * two can never drift apart.
+   */
+  const setFullscreen = (on: boolean): void => {
+    if (on && !store.state.score) return;
+    store.patch({ fullscreen: on });
+    void (on ? fullscreen.enter() : fullscreen.leave());
+  };
 
   /**
    * Jump to the start of the line before or after the one playing.
@@ -513,6 +542,7 @@ export function mountApp(root: HTMLElement): void {
     el('div', { class: 'opening' }, dropzone.element, library.element),
     stage,
     drawer.element,
+    fullscreen.element,
     help.element,
     tips.element,
     fileInput,
@@ -540,7 +570,24 @@ export function mountApp(root: HTMLElement): void {
   });
   // Restored before the first render, so a folded waveform never flashes into
   // view on the way to being hidden.
-  store.patch({ waveformHidden: loadHiddenWaveforms() });
+  store.patch({
+    waveformHidden: loadHiddenWaveforms(),
+    fullscreenLayout: loadFullscreenLayout(),
+  });
+
+  /*
+   * The browser can leave fullscreen without asking us.
+   *
+   * Esc, the window controls, switching apps on a phone — all of them exit
+   * without going through the button, and if the state did not follow, the app
+   * would sit there drawing a fullscreen overlay across a window that is no
+   * longer fullscreen. So the browser's opinion wins.
+   */
+  document.addEventListener('fullscreenchange', () => {
+    const real = document.fullscreenElement === fullscreen.element;
+    if (!real && store.state.fullscreen) store.patch({ fullscreen: false });
+  });
+
   void library.refresh();
   void drawer.refresh();
 
@@ -567,6 +614,7 @@ export function mountApp(root: HTMLElement): void {
     practice,
     sectionBar,
     help,
+    fullscreen,
   ];
   // The sheet lives outside the store, so mirror the one fact the mode switch
   // needs before the views draw themselves.
@@ -672,10 +720,29 @@ export function mountApp(root: HTMLElement): void {
     if (event.key === 'Escape') {
       if (help.isOpen) help.setOpen(false);
       else if (store.state.libraryOpen) store.patch({ libraryOpen: false });
+      // The browser exits fullscreen on Escape by itself; this is the state
+      // catching up in the case where it did not (an unfullscreened overlay
+      // filling the page still wants Escape to close it).
+      else if (store.state.fullscreen) setFullscreen(false);
       else store.patch({ selected: null });
       return;
     }
     if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return;
+
+    /*
+     * F, and F2 beside it.
+     *
+     * F is what a video player has taught everyone to press, and it costs
+     * nothing here — Beyond's other letters are T, R and W, all in Beatmap. F2
+     * exists because a function key is the one thing that still works when the
+     * page has taken the letters, and it is the row people reach for when they
+     * are looking for a mode rather than typing.
+     */
+    if (event.key === 'f' || event.key === 'F' || event.key === 'F2') {
+      event.preventDefault();
+      setFullscreen(!store.state.fullscreen);
+      return;
+    }
 
     switch (event.key) {
       case ' ':

@@ -106,7 +106,28 @@ export interface State {
    * transport can draw the state of its own switch.
    */
   readonly waveformHidden: readonly ViewMode[];
+
+  /**
+   * Reading the words with nothing else on screen.
+   *
+   * Not a fifth mode: it is a way of *looking* at Learning rather than a step
+   * in the work, so it toggles on top of whatever view you are in and leaves
+   * that view exactly as it was underneath.
+   */
+  readonly fullscreen: boolean;
+
+  /**
+   * Which of the two fullscreen layouts is showing.
+   *
+   * They answer different moments. `teleprompter` gives the sung line the
+   * whole screen and shows what is coming beneath it — for singing along at
+   * speed. `karaoke` weights several lines evenly — for seeing a verse whole
+   * while you work out where you are in it.
+   */
+  readonly fullscreenLayout: FullscreenLayout;
 }
+
+export type FullscreenLayout = 'teleprompter' | 'karaoke';
 
 export interface DisplayLayers {
   /** The words as written — the lyric sheet. */
@@ -168,6 +189,8 @@ export class Store {
       morphemes: false,
     },
     waveformHidden: [],
+    fullscreen: false,
+    fullscreenLayout: 'teleprompter',
   };
 
   get state(): State {

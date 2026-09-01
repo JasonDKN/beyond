@@ -12,6 +12,7 @@ import '@/styles/library.css';
 import '@/styles/trackbar.css';
 import '@/styles/practice.css';
 import '@/styles/tips.css';
+import '@/styles/fullscreen.css';
 // Last, so its media queries override the desktop layout rather than losing to it.
 import '@/styles/mobile.css';
 import { mountApp } from '@/ui/app';

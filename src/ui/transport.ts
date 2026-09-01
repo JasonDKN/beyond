@@ -24,6 +24,7 @@ export class TransportView {
   #followButton: HTMLButtonElement;
   #onResumeFollow: () => void;
   #waveButton: HTMLButtonElement;
+  #fullscreenButton: HTMLButtonElement;
   /**
    * What the buttons currently show.
    *
@@ -41,10 +42,30 @@ export class TransportView {
     onResumeFollow: () => void,
     onToggleWaveform: () => void,
     onStepLine: (delta: number) => void,
+    onToggleFullscreen: () => void,
   ) {
     this.#player = player;
     this.#onZoom = onZoom;
     this.#onResumeFollow = onResumeFollow;
+
+    /*
+     * The words, and nothing else.
+     *
+     * Deliberately a switch on this bar rather than a fifth entry on the mode
+     * switch. The four modes are steps in a piece of work; this is a way of
+     * looking at one of them, and putting it beside them would have said it was
+     * somewhere else to go rather than the same place, larger.
+     */
+    this.#fullscreenButton = el(
+      'button',
+      {
+        class: 'transport__fullscreen',
+        type: 'button',
+        'aria-label': 'Fullscreen',
+        onclick: () => onToggleFullscreen(),
+      },
+      '⛶',
+    ) as HTMLButtonElement;
 
     /*
      * Fold the waveform away.
@@ -263,6 +284,7 @@ export class TransportView {
         ),
         el('label', { class: 'transport__label' }, 'Zoom', this.#zoom),
         this.#waveButton,
+        this.#fullscreenButton,
       ),
     );
 
@@ -379,6 +401,21 @@ export class TransportView {
         : 'Fold the waveform away in this view\nThe parts of the song stay, so you can still jump\nRemembered per view',
     );
     this.#waveButton.disabled = !state.audio;
+
+    // Labelled by what pressing it does, not by what is on screen — the icon
+    // already says which state you are in.
+    this.#fullscreenButton.classList.toggle('is-on', state.fullscreen);
+    this.#fullscreenButton.setAttribute(
+      'data-tip',
+      state.fullscreen
+        ? 'Leave fullscreen\nOr press `F`, `F2` or `Esc`'
+        : 'The words, filling the screen\nOr press `F` or `F2`',
+    );
+    this.#fullscreenButton.setAttribute(
+      'aria-label',
+      state.fullscreen ? 'Leave fullscreen' : 'Fullscreen',
+    );
+    this.#fullscreenButton.disabled = state.score === null;
 
     const looping = state.loop !== null;
     this.#loopB.classList.toggle('is-set', looping);

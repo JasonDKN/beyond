@@ -380,3 +380,39 @@ body.mode-learning .stage__score-scroll {
   opacity: 0.3;
   cursor: not-allowed;
 }
+
+/*
+ * Fullscreen, from the transport.
+ *
+ * Same shape as the waveform fold beside it — both are switches about how the
+ * screen is arranged rather than about the song, so they read as a pair.
+ */
+.transport__fullscreen {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  color: var(--ghost);
+  font-size: 0.9rem;
+  line-height: 1;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.transport__fullscreen:hover:not(:disabled) {
+  color: var(--paper-dim);
+  border-color: rgba(140, 168, 232, 0.35);
+}
+
+.transport__fullscreen.is-on {
+  color: var(--mint);
+  border-color: rgba(124, 245, 213, 0.45);
+  background: var(--mint-soft);
+}
+
+.transport__fullscreen:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

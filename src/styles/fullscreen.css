@@ -1,0 +1,481 @@
+/*
+ * Beyond — fullscreen reading.
+ *
+ * One job: the words, at a size you can read while your mouth is busy. Every
+ * other decision here follows from that. The bar is the only chrome, it sits at
+ * the bottom where a thumb reaches on a phone, and it fades out of the way once
+ * the song is running and you have stopped touching anything.
+ *
+ * Two layouts share this sheet because they share everything except how the
+ * light is distributed across the lines. Teleprompter puts nearly all of it on
+ * the line being sung; karaoke spreads it, so a verse reads as a verse.
+ */
+
+.fs {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background: radial-gradient(120% 80% at 50% 0%, var(--ink-700), var(--ink-900) 70%);
+  color: var(--paper);
+}
+
+.fs[hidden] {
+  display: none;
+}
+
+/* --- The words ----------------------------------------------------------- */
+
+.fs__stage {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* `safe` so a stage taller than the screen scrolls from its top rather than
+     hiding the first line above the edge — the same trap the library fell into. */
+  align-content: safe center;
+  gap: clamp(0.6rem, 2.4vh, 1.6rem);
+  overflow-y: auto;
+  padding: clamp(1rem, 4vh, 3rem) clamp(1rem, 5vw, 5rem);
+  text-align: center;
+}
+
+.fs__empty {
+  color: var(--paper-dim);
+  font-family: var(--font-ui);
+  font-size: var(--step-1);
+}
+
+.fs__line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.15em 0.55em;
+  transition: opacity var(--duration-mid) var(--ease-out);
+}
+
+.fs__word {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.08em;
+  line-height: 1.15;
+}
+
+/* The layer stack, smallest first in weight — the reading you lean on sits
+   under the script you are learning to recognise. */
+.fs__written {
+  font-family: var(--font-display);
+  font-size: 1em;
+}
+
+.fs__spoken {
+  font-family: var(--font-display);
+  font-size: 0.72em;
+  color: var(--sky);
+}
+
+.fs__ipa {
+  font-family: var(--font-ipa);
+  font-size: 0.5em;
+  color: var(--paper-dim);
+}
+
+.fs__respell {
+  font-family: var(--font-ui);
+  font-size: 0.46em;
+  letter-spacing: 0.02em;
+  color: var(--violet);
+}
+
+/* --- Teleprompter -------------------------------------------------------- */
+/*
+ * The line you are singing gets the screen; everything after it is a warning,
+ * not reading matter. Sizes are in vw/vh so the same rule serves a phone held
+ * sideways and a laptop.
+ */
+
+.fs.is-teleprompter .fs__line--now {
+  font-size: clamp(1.9rem, 6.4vw, 4.4rem);
+  opacity: 1;
+}
+
+.fs.is-teleprompter .fs__line--next {
+  font-size: clamp(1.05rem, 2.8vw, 2rem);
+  opacity: 0.5;
+}
+
+.fs.is-teleprompter .fs__line--next ~ .fs__line--next {
+  opacity: 0.28;
+}
+
+/* --- Karaoke ------------------------------------------------------------- */
+/*
+ * Five lines, weighted but all legible. The one being sung is only somewhat
+ * larger than its neighbours — the wipe is what tells you where you are, so the
+ * type does not have to shout it.
+ */
+
+.fs.is-karaoke .fs__line {
+  font-size: clamp(1.1rem, 3.1vw, 2.1rem);
+  opacity: 0.42;
+}
+
+.fs.is-karaoke .fs__line--now {
+  font-size: clamp(1.5rem, 4.4vw, 3rem);
+  opacity: 1;
+}
+
+.fs.is-karaoke .fs__line--past {
+  opacity: 0.22;
+}
+
+/* --- The wipe ------------------------------------------------------------ */
+/*
+ * The same wipe as the score, for the same reason: it is driven by the playhead
+ * rather than by an animation, so it fills at whatever speed the song is
+ * actually running — half speed fills at half speed.
+ */
+
+.fs__word.is-singing > span:first-child {
+  background-image: linear-gradient(
+    90deg,
+    var(--mint) calc(var(--sung, 0) * 100%),
+    #f4fffb calc(var(--sung, 0) * 100% + 3px)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.fs__word.is-sung > span:first-child {
+  color: var(--mint);
+}
+
+/* --- The bar ------------------------------------------------------------- */
+
+.fs__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  /* Clear of a phone's home indicator, and of a notch in landscape. */
+  padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  padding-left: max(var(--space-4), env(safe-area-inset-left));
+  padding-right: max(var(--space-4), env(safe-area-inset-right));
+  border-top: var(--border-soft);
+  background: rgba(9, 12, 26, 0.82);
+  backdrop-filter: blur(14px);
+  transition: opacity var(--duration-mid) var(--ease-out),
+    transform var(--duration-mid) var(--ease-out);
+}
+
+/*
+ * Out of the way while you sing.
+ *
+ * Only while playing — see fullscreen.ts. A paused screen with no controls on
+ * it reads as broken rather than clean, and the first thing anyone does then is
+ * tap around hunting for the play button.
+ */
+.fs.is-idle .fs__bar {
+  opacity: 0;
+  transform: translateY(60%);
+  pointer-events: none;
+}
+
+.fs__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fs__group--right {
+  margin-left: auto;
+}
+
+.fs__label {
+  font-family: var(--font-ui);
+  font-size: var(--step--1);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+.fs__clock {
+  font-family: var(--font-ui);
+  font-size: var(--step-0);
+  font-variant-numeric: tabular-nums;
+  color: var(--paper-dim);
+}
+
+/*
+ * Round controls, at a size a thumb hits.
+ *
+ * 48px is the smallest target that is reliably hit on a phone without looking
+ * at it, and looking at it is the one thing you cannot do while reading the
+ * words above.
+ */
+.fs__round,
+.fs__play {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: var(--border-firm);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--paper);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.fs__play {
+  width: 60px;
+  height: 60px;
+  border-color: rgba(124, 245, 213, 0.4);
+  background: var(--mint-soft);
+  color: var(--mint);
+}
+
+.fs__round:hover,
+.fs__play:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.06);
+}
+
+.fs__round:active,
+.fs__play:active {
+  transform: scale(0.94);
+}
+
+.fs__round svg,
+.fs__play svg {
+  width: 24px;
+  height: 24px;
+  fill: currentcolor;
+}
+
+.fs__play svg {
+  width: 28px;
+  height: 28px;
+}
+
+.fs__chip {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: var(--border-firm);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--paper-dim);
+  font-family: var(--font-ui);
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.fs__chip:hover {
+  color: var(--paper);
+  border-color: rgba(140, 168, 232, 0.4);
+}
+
+.fs__chip.is-on,
+.fs__chip.is-set {
+  color: var(--mint);
+  border-color: rgba(124, 245, 213, 0.45);
+  background: var(--mint-soft);
+}
+
+.fs__chip--wide {
+  min-width: 8.5rem;
+}
+
+.fs__chip--exit {
+  color: var(--paper);
+  border-color: rgba(140, 168, 232, 0.35);
+}
+
+.fs__rate {
+  width: 7rem;
+  accent-color: var(--mint);
+}
+
+.fs__rate-value {
+  font-family: var(--font-ui);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+  color: var(--paper-dim);
+  min-width: 3.2rem;
+}
+
+/* --- Narrow and short ---------------------------------------------------- */
+/*
+ * A phone has neither the width nor the height to spend on the whole bar. Left
+ * to wrap, it came to a quarter of a portrait screen and a quarter of a
+ * landscape one — spent almost entirely on speed and the layer switches, which
+ * you set once and then leave alone for the rest of the song.
+ *
+ * So on a small screen those fold behind `⋯` and the row that stays is the one
+ * you touch while singing. Both dimensions get the same treatment, because a
+ * phone turned sideways is still a phone.
+ */
+
+.fs__more {
+  display: none;
+}
+
+@media (max-width: 620px), (max-height: 480px) {
+  .fs__more {
+    display: block;
+  }
+
+  .fs__bar {
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-inline: var(--space-2);
+  }
+
+  .fs__group--speed,
+  .fs__group--loop,
+  .fs__group--layers {
+    display: none;
+  }
+
+  .fs.is-open .fs__group--speed,
+  .fs.is-open .fs__group--loop,
+  .fs.is-open .fs__group--layers {
+    display: flex;
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .fs.is-open .fs__more {
+    color: var(--mint);
+    border-color: rgba(124, 245, 213, 0.45);
+  }
+
+  .fs__group--right {
+    margin-left: 0;
+  }
+
+  .fs__rate {
+    width: 5.5rem;
+  }
+
+  .fs__clock {
+    font-size: var(--step--1);
+  }
+
+  /*
+   * 44px, which is the smallest target a thumb hits reliably without looking —
+   * and not looking is the point, since your eyes are on the words above.
+   * Below that the bar stops being usable mid-song, so this is the floor.
+   */
+  .fs__round,
+  .fs__play {
+    width: 44px;
+    height: 44px;
+  }
+
+  .fs__play {
+    width: 52px;
+    height: 52px;
+  }
+
+  .fs__bar {
+    padding-block: var(--space-2);
+    padding-bottom: max(var(--space-2), env(safe-area-inset-bottom));
+  }
+
+  /* The layout name is the one thing here that will not shorten gracefully. */
+  .fs__chip--wide {
+    min-width: 0;
+  }
+}
+
+/*
+ * Portrait type, raised off the vw floor.
+ *
+ * The clamps above are written against viewport width, which is right on a
+ * desktop and wrong on a phone held upright: 4.4vw of a 390px screen is 17px,
+ * so the sizes fell to their minimums and the current line came out no larger
+ * than body text. A phone in portrait has height to spend even though it has no
+ * width, so the floors go up here rather than the whole scale being rewritten.
+ */
+@media (max-width: 620px) and (min-height: 481px) {
+  .fs.is-teleprompter .fs__line--now {
+    font-size: clamp(2.4rem, 9vw, 3.4rem);
+  }
+
+  .fs.is-teleprompter .fs__line--next {
+    font-size: clamp(1.25rem, 4.6vw, 1.8rem);
+  }
+
+  .fs.is-karaoke .fs__line {
+    font-size: clamp(1.3rem, 5vw, 1.8rem);
+  }
+
+  .fs.is-karaoke .fs__line--now {
+    font-size: clamp(1.9rem, 7.4vw, 2.6rem);
+  }
+}
+
+@media (max-height: 480px) and (orientation: landscape) {
+  .fs__stage {
+    padding-block: var(--space-2);
+    gap: 0.4rem;
+  }
+
+  .fs__bar {
+    padding-block: var(--space-1);
+    gap: var(--space-1) var(--space-2);
+  }
+
+  .fs__round,
+  .fs__play {
+    width: 40px;
+    height: 40px;
+  }
+
+  .fs__play {
+    width: 46px;
+    height: 46px;
+  }
+
+  .fs__chip {
+    min-height: 32px;
+    padding: 0 var(--space-2);
+  }
+
+  /*
+   * One line of warning is plenty when the screen is 400px tall.
+   *
+   * Karaoke loses its outermost lines rather than shrinking: at this height,
+   * five lines meant a stage that scrolled, and a stage that scrolls is a stage
+   * where the line you are singing can be off the bottom of it.
+   */
+  .fs.is-teleprompter .fs__line--next ~ .fs__line--next {
+    display: none;
+  }
+
+  .fs.is-karaoke .fs__line--past,
+  .fs.is-karaoke .fs__line--next ~ .fs__line--next ~ .fs__line--next {
+    display: none;
+  }
+}
+
+/* Fine-pointer devices do not need thumb-sized targets, but they do no harm,
+   so the only thing tightened here is the gap between them. */
+@media (pointer: fine) {
+  .fs__group {
+    gap: var(--space-1);
+  }
+}
