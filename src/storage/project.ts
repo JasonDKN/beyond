@@ -12,26 +12,37 @@ import { saveTrack, type TrackRecord } from './library';
  * whatever backs up the rest of your documents.
  *
  * The file holds the irreplaceable part — lyrics, timings, translations — and
- * normally not the audio, which would be megabytes of something you already
- * have. On opening a project the audio is found in the library by fingerprint,
- * or asked for once and then cached, after which it opens in a click.
+ * the song itself along with it.
  *
- * A save file can also carry the song inside it.
+ * It did not always. There were two kinds of file: a small one holding just
+ * the work, on the reasoning that the audio is megabytes of something you
+ * already have and the fingerprint will find it again; and a larger one with
+ * the song folded in, for carrying a track to a device that had never seen it.
  *
- * That exception exists for one situation: you built a fortnight of work on a
- * machine you are about to leave behind. The fingerprint that normally
- * reunites a project with its music only works on a device that already has
- * the music, and your phone does not. So a pack carries both, and the work
- * lands on the other device complete rather than asking for a file that is
- * three hundred miles away.
+ * That was a distinction nobody should have had to learn, and it had a trap
+ * in it. "You already have the audio" is true on the machine you are sitting
+ * at and false everywhere else — and everywhere else is precisely where a save
+ * file is going. The small file was quietly useless in the situation that
+ * makes you reach for one.
+ *
+ * So there is one file, and it is the complete one. A song too large to fold
+ * in (see MAX_EMBED_BYTES) still saves; that file asks for its audio once on
+ * the far end, which is the old behaviour and the rare case rather than the
+ * default one.
  *
  * The audio rides as base64, which costs a third more bytes than the raw file
  * and saves writing a zip container and its reader. For one song that trade is
  * obviously right; it is why save files are per song rather than per library.
  */
 
+/*
+ * One extension, because there is one kind of save file.
+ *
+ * There used to be a second — `.beyond-song.json` — for the variant that
+ * carried the audio. Files written with it still open: the picker accepts any
+ * `.json` and the parser reads both versions. Nothing new is named that way.
+ */
 export const PROJECT_EXTENSION = '.beyond.json';
-export const SONG_EXTENSION = '.beyond-song.json';
 
 /** Audio carried inside a project file, for moving a song between devices. */
 interface EmbeddedAudio {
@@ -121,6 +132,20 @@ export function parseProject(json: string): OpenedProject {
   }
 }
 
+/**
+ * The largest song we will fold into a save file.
+ *
+ * Base64 costs a third on top, and `JSON.stringify` then copies the whole
+ * string again, so the peak cost of embedding is roughly three times the
+ * source. Forty megabytes of audio is about two hours of ordinary MP3 — far
+ * past any song — and keeps that peak somewhere a browser tab is comfortable.
+ *
+ * Past it, the save still happens: it just carries the work and leaves the
+ * song behind, which is the old behaviour and a great deal better than a tab
+ * that dies halfway through saving.
+ */
+export const MAX_EMBED_BYTES = 40 * 1024 * 1024;
+
 /** Wrap a file up so it can travel inside a save file. */
 export async function embedAudio(blob: Blob, fileName: string): Promise<EmbeddedAudio> {
   return {
@@ -155,12 +180,6 @@ async function toBase64(blob: Blob): Promise<string> {
   });
   const comma = dataUrl.indexOf(',');
   return comma < 0 ? '' : dataUrl.slice(comma + 1);
-}
-
-/** A recognisable filename for a commit. */
-export function songFileName(title: string): string {
-  const safe = title.replace(/[^\w\-. ]+/g, '').trim() || 'track';
-  return `${safe}${SONG_EXTENSION}`;
 }
 
 /** A safe, recognisable filename for a track. */

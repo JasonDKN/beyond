@@ -11,7 +11,7 @@ import {
   listTracks,
   type TrackSummary,
 } from '@/storage/library';
-import { songFileName, embedAudio, serializeProject } from '@/storage/project';
+import { embedAudio, MAX_EMBED_BYTES, projectFileName, serializeProject } from '@/storage/project';
 import { download } from '@/export';
 import { clear, el, formatClock } from './dom';
 
@@ -283,12 +283,12 @@ export class LibraryView {
               class: 'library__action library__action--song',
               type: 'button',
               'data-tip':
-                `Save ${track.title} with the song inside it\n` +
-                'One file holding the words, timings and the song itself — ' +
+                `Save ${track.title} to a file\n` +
+                'The words, the timings and the song itself, all in one — ' +
                 'open it on your phone and everything is there',
               onclick: () => void this.#saveWithSong(track),
             },
-            'Save with song',
+            'Save to a file',
           )
         : null,
       track.hasAudio
@@ -319,27 +319,36 @@ export class LibraryView {
   }
 
   /**
-   * Write one song out complete: the work and the music in a single file.
+   * Write one track out complete: the work and the music in a single file.
    *
-   * The normal project file leaves the audio out, because the fingerprint
-   * finds it again on a machine that already has it. A device you have never
-   * opened this song on cannot do that, so this file carries the song along —
-   * which is the whole difference between arriving with your work and
-   * arriving with a file that asks you for an MP3 you left at home.
+   * There is only one kind of save file now, and this is it. Beyond used to
+   * offer two — one carrying the song, one leaving it out on the reasoning
+   * that the fingerprint would find it again — and that was a distinction
+   * nobody should have had to learn, with a trap inside it: the smaller file
+   * is useless on a device that has never seen the song, which is exactly the
+   * device you are most likely to be opening it on.
+   *
+   * This is the same file the Save button writes. It exists here as well so
+   * you can write out a track from the drawer without opening it first.
    */
   async #saveWithSong(track: TrackSummary): Promise<void> {
     this.#summary.textContent = `Saving ${track.title}…`;
     try {
       const [record, blob] = await Promise.all([getTrack(track.id), getTrackAudio(track.id)]);
-      if (!record || !blob) {
-        this.#summary.textContent = 'That track has no stored audio to save.';
+      if (!record) {
+        this.#summary.textContent = 'That track could not be read.';
         return;
       }
-      const audio = await embedAudio(blob, record.fileName);
-      download(songFileName(record.title), serializeProject(record, audio), 'application/json');
-      this.#summary.textContent =
-        `${track.title} saved — ${formatBytes(blob.size)} of song included. ` +
-        'Open it on your other device.';
+      // A track whose audio was dropped to reclaim space still saves — the
+      // work is the part that took an evening.
+      const embeddable = blob && blob.size <= MAX_EMBED_BYTES ? blob : null;
+      const audio = embeddable ? await embedAudio(embeddable, record.fileName) : undefined;
+      download(projectFileName(record.title), serializeProject(record, audio), 'application/json');
+      this.#summary.textContent = embeddable
+        ? `${track.title} saved — ${formatBytes(embeddable.size)} of song included. ` +
+          'Open it on your other device.'
+        : `${track.title} saved. The song itself is not in the file, so the other ` +
+          'device will ask for it once.';
     } catch {
       this.#summary.textContent = 'That track could not be saved.';
     }

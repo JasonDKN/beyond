@@ -80,11 +80,11 @@ const GROUPS: readonly Group[] = [
   },
   {
     title: 'Save files',
-    note: 'A save file holds a song’s lyrics and every timing you tapped. Saved with the song inside it, one file carries the whole thing to another machine.',
+    note: 'A save file holds a song’s lyrics, every timing you tapped, and the song itself. One file, complete — open it on another machine and nothing is missing.',
     items: [
       { keys: ['Save'], what: 'Write your work to its file — it asks for one the first time' },
       { keys: ['Save As…'], what: 'Write it somewhere else; that file becomes the one Save uses' },
-      { keys: ['Tracks → Save with song'], what: 'One file with the audio inside — carries the song to another machine' },
+      { keys: ['Tracks → Save to a file'], what: 'Write out any track from the drawer, without opening it first' },
       { keys: ['Open a save file'], what: 'On the first screen of any device, or from the Tracks drawer' },
     ],
   },

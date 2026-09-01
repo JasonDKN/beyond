@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   EmptyWriteError,
-  songFileName,
   parseProject,
   projectFileName,
   serializeProject,
@@ -122,9 +121,12 @@ describe('commits — a project with the song inside it', () => {
     expect(opened.audio).toBeNull();
   });
 
-  it('names a commit distinctly from a plain project', () => {
-    expect(songFileName('Please')).toBe('Please.beyond-song.json');
-    expect(songFileName('안녕 / hi?')).toBe('hi.beyond-song.json');
+  it('gives every save file the same name shape', () => {
+    // One kind of file now, so one extension. Anything written under the old
+    // `.beyond-song.json` name still opens — the picker takes any .json and
+    // the parser reads both versions.
+    expect(projectFileName('Please')).toBe('Please.beyond.json');
+    expect(projectFileName('안녕 / hi?')).toBe('hi.beyond.json');
   });
 });
 

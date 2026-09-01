@@ -18,7 +18,9 @@ import {
 import {
   adoptProject,
   canWriteFiles,
+  embedAudio,
   EmptyWriteError,
+  MAX_EMBED_BYTES,
   parseProject,
   pickOpenHandle,
   pickSaveHandle,
@@ -374,6 +376,41 @@ export function mountApp(root: HTMLElement): void {
   };
 
   /**
+   * The encoded song, kept for as long as the song is open.
+   *
+   * A save file carries the audio, and the audio never changes for a given
+   * track — so base64-encoding it on every write would be redoing identical
+   * work several megabytes at a time, on the same path that runs after every
+   * tap. Encode once per track and hold the string.
+   */
+  let encodedAudio: { trackId: string; audio: Awaited<ReturnType<typeof embedAudio>> } | null =
+    null;
+
+  /**
+   * What goes in the save file: the work, and the song with it.
+   *
+   * There used to be two kinds of file — one with the song and one without —
+   * and that was a distinction nobody should have had to learn. It also had a
+   * trap in it: the small one is useless on a device that has never seen the
+   * song, which is exactly the device you are most likely to be opening it on.
+   * So there is one file now, and it is the complete one.
+   */
+  const projectContents = async (record: TrackRecord): Promise<string> => {
+    if (!record.hasAudio) return serializeProject(record);
+
+    if (encodedAudio?.trackId !== record.id) {
+      const blob = await getTrackAudio(record.id);
+      if (!blob || blob.size > MAX_EMBED_BYTES) {
+        // No stored audio, or more than a tab should hold three copies of.
+        // The work still saves; it just travels without the song.
+        return serializeProject(record);
+      }
+      encodedAudio = { trackId: record.id, audio: await embedAudio(blob, record.fileName) };
+    }
+    return serializeProject(record, encodedAudio.audio);
+  };
+
+  /**
    * Write the current track to its linked file. Silent — no picker.
    *
    * Returns whether the work is on disk, because a save that quietly did
@@ -384,7 +421,7 @@ export function mountApp(root: HTMLElement): void {
       if (!projectHandle || projectTrackId !== store.state.trackId) return false;
       const record = await currentRecord();
       if (!record) return false;
-      const contents = serializeProject(record);
+      const contents = await projectContents(record);
       try {
         await writeHandle(projectHandle, contents);
         return true;
@@ -444,7 +481,7 @@ export function mountApp(root: HTMLElement): void {
       if (!canWriteFiles()) {
         // Firefox and Safari cannot write to a picked file, so fall back to a
         // plain download. Same data, one more step.
-        download(projectFileName(record.title), serializeProject(record), 'application/json');
+        download(projectFileName(record.title), await projectContents(record), 'application/json');
         return;
       }
 
@@ -613,7 +650,11 @@ export function mountApp(root: HTMLElement): void {
   store.events.on('change', (state) => {
     if (state.saveState !== 'saved' || !projectHandle) return;
     clearTimeout(projectWriteTimer);
-    projectWriteTimer = window.setTimeout(() => void writeProjectFile(), 800);
+    // Longer than it was, because the file now carries the song and is
+    // megabytes rather than kilobytes. A burst of taps should settle into one
+    // write, not a queue of them — and nothing is at risk in the meantime,
+    // since every tap is already safe in the browser's own storage.
+    projectWriteTimer = window.setTimeout(() => void writeProjectFile(), 2500);
   });
 
   // Changing songs drops the link. A project file belongs to one song, and
@@ -624,6 +665,10 @@ export function mountApp(root: HTMLElement): void {
       projectHandle = null;
       projectTrackId = null;
       trackBar.setLinkedFile(null);
+    }
+    // Let several megabytes of encoded song go when its song does.
+    if (encodedAudio && state.trackId && state.trackId !== encodedAudio.trackId) {
+      encodedAudio = null;
     }
   });
   // Restored before the first render, so a folded waveform never flashes into
