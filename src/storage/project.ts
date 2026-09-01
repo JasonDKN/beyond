@@ -198,7 +198,41 @@ export function projectFileName(title: string): string {
  * the same data either way, just more clicks.
  */
 export function canWriteFiles(): boolean {
+  if (fileWritesBroken()) return false;
   return typeof (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function';
+}
+
+const BROKEN_KEY = 'beyond.file-writes-broken';
+
+/**
+ * Whether this browser has already proved it cannot write to a picked file.
+ *
+ * Having the API is not the same as it working. On at least one machine the
+ * whole mechanism produces empty files every time, at any size — antivirus and
+ * endpoint software are the usual suspects, since `createWritable` works by
+ * writing a swap file and renaming it over the target, which is exactly the
+ * pattern such tools watch for.
+ *
+ * There is no way to ask in advance, so this is learned: the first empty write
+ * sets the flag, and from then on saving goes straight to a download. Sticky
+ * across sessions, because a browser that could not do it this morning cannot
+ * do it this afternoon either, and asking someone to discover that twice is
+ * one time too many.
+ */
+export function fileWritesBroken(): boolean {
+  try {
+    return localStorage.getItem(BROKEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markFileWritesBroken(): void {
+  try {
+    localStorage.setItem(BROKEN_KEY, '1');
+  } catch {
+    /* Private browsing. It will be relearned next time, which is fine. */
+  }
 }
 
 interface PickerWindow {
@@ -263,18 +297,63 @@ export async function pickOpenHandle(): Promise<FileSystemFileHandle | null> {
  * browser's own download machinery and does not touch the file system directly.
  */
 export async function writeHandle(handle: FileSystemFileHandle, contents: string): Promise<void> {
-  const writable = await handle.createWritable();
+  if (await attemptWrite(handle, contents, contents.length)) return;
+
+  /*
+   * Once more, as a Blob.
+   *
+   * Writing a string means the browser converting several megabytes of
+   * JavaScript string into bytes inside the write call; handing it a Blob
+   * moves that work out and has been the difference on some builds. It is one
+   * cheap retry before giving up on the whole mechanism, so it is worth trying
+   * even though it is not the likeliest cure.
+   */
+  if (await attemptWrite(handle, new Blob([contents]), contents.length)) return;
+
+  /*
+   * Writing to picked files does not work here, so stop doing it.
+   *
+   * The picker created this file the moment it was confirmed, so a failure
+   * leaves a real, empty file with the right name sitting in the folder — and
+   * then the fallback download asks for a *second* file. Two dialogs and a
+   * dud is a terrible way to save. Remember that this browser cannot do it and
+   * go straight to downloads from now on: one dialog, one good file.
+   */
+  markFileWritesBroken();
+  // Tidy up the empty file we were made to create. Not everywhere supports
+  // this, and a leftover file is a much smaller problem than the write itself.
   try {
-    await writable.write(contents);
-  } finally {
-    // Always close, even if the write threw — an unclosed writable leaves the
-    // swap file behind and the target at zero.
-    await writable.close();
+    await (handle as { remove?: () => Promise<void> }).remove?.();
+  } catch {
+    /* Leave it; the notice explains what happened. */
+  }
+  throw new EmptyWriteError(handle.name);
+}
+
+/** One write, closed properly, and checked. True if the bytes are really there. */
+async function attemptWrite(
+  handle: FileSystemFileHandle,
+  data: string | Blob,
+  expected: number,
+): Promise<boolean> {
+  try {
+    const writable = await handle.createWritable();
+    try {
+      await writable.write(data);
+    } finally {
+      // Always close, even if the write threw — an unclosed writable leaves
+      // the swap file behind and the target at zero.
+      await writable.close();
+    }
+  } catch {
+    return false;
   }
 
-  const written = await handle.getFile();
-  if (contents.length > 0 && written.size === 0) {
-    throw new EmptyWriteError(handle.name);
+  if (expected === 0) return true;
+  try {
+    return (await handle.getFile()).size > 0;
+  } catch {
+    return false;
   }
 }
 

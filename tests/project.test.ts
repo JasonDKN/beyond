@@ -141,28 +141,42 @@ describe('commits — a project with the song inside it', () => {
  */
 describe('writing to a picked file', () => {
   /** Enough of a FileSystemFileHandle to write to, with a settable outcome. */
-  function fakeHandle(options: { landed: boolean; throwOnWrite?: boolean }) {
-    let stored = '';
+  function fakeHandle(options: {
+    landed: boolean;
+    throwOnWrite?: boolean;
+    /** Fails the string write and succeeds the Blob retry. */
+    landsAsBlob?: boolean;
+  }) {
+    let stored = 0;
     let closed = false;
+    let attempts = 0;
     return {
       name: 'song.beyond.json',
       get closed() {
         return closed;
       },
-      createWritable: () =>
-        Promise.resolve({
-          write: (contents: string) => {
+      get attempts() {
+        return attempts;
+      },
+      createWritable: () => {
+        attempts += 1;
+        return Promise.resolve({
+          write: (data: string | Blob) => {
             if (options.throwOnWrite) return Promise.reject(new Error('disk went away'));
-            if (options.landed) stored = contents;
+            const isBlob = typeof data !== 'string';
+            if (options.landed || (options.landsAsBlob && isBlob)) {
+              stored = isBlob ? data.size : data.length;
+            }
             return Promise.resolve();
           },
           close: () => {
             closed = true;
             return Promise.resolve();
           },
-        }),
-      getFile: () => Promise.resolve({ size: stored.length }),
-    } as unknown as FileSystemFileHandle & { closed: boolean };
+        });
+      },
+      getFile: () => Promise.resolve({ size: stored }),
+    } as unknown as FileSystemFileHandle & { closed: boolean; attempts: number };
   }
 
   it('writes, and is happy when the bytes are there afterwards', async () => {
@@ -179,10 +193,20 @@ describe('writing to a picked file', () => {
 
   it('closes the writable even when the write throws', async () => {
     // An unclosed writable leaves the swap file behind and the target at zero,
-    // which is the very state this is all trying to avoid.
+    // which is the very state this is all trying to avoid. The throw itself is
+    // swallowed: a write that fails and a write that lands nothing are the
+    // same outcome from here, and both end as EmptyWriteError after the retry.
     const handle = fakeHandle({ landed: false, throwOnWrite: true });
-    await expect(writeHandle(handle, '{"a":1}')).rejects.toThrow('disk went away');
+    await expect(writeHandle(handle, '{"a":1}')).rejects.toBeInstanceOf(EmptyWriteError);
     expect(handle.closed).toBe(true);
+  });
+
+  it('retries once as a Blob before giving up on the mechanism', async () => {
+    // Some builds fail on a large string and manage the same bytes as a Blob,
+    // so the second attempt is worth making before writing the whole route off.
+    const handle = fakeHandle({ landed: false, landsAsBlob: true });
+    await expect(writeHandle(handle, '{"a":1}')).resolves.toBeUndefined();
+    expect(handle.attempts).toBe(2);
   });
 
   it('accepts an empty file when there was nothing to write', async () => {

@@ -455,8 +455,9 @@ export function mountApp(root: HTMLElement): void {
           download(projectFileName(record.title), contents, 'application/json');
           store.patch({
             notice:
-              `${name} came out empty, so your work has been downloaded instead. ` +
-              'Open that file to carry on from it.',
+              `This browser can’t write to ${name} — it produced an empty file, ` +
+              'so your work has been downloaded instead. Saving will use downloads ' +
+              'from now on, so you will only be asked once.',
           });
           return false;
         }
