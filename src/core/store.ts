@@ -139,6 +139,15 @@ export interface DisplayLayers {
   readonly respelling: boolean;
   /** Per-word morpheme breakdown under the line. */
   readonly morphemes: boolean;
+  /**
+   * What the line means, in the words you typed for it.
+   *
+   * A layer like the others, because that is what it is: another reading of
+   * the same line, and the one that answers the question the phonetics cannot.
+   * Knowing how to say a line you do not understand gets you through a
+   * performance and nowhere near the language.
+   */
+  readonly translation: boolean;
 }
 
 type StoreEvents = {
@@ -187,6 +196,7 @@ export class Store {
       ipa: true,
       respelling: true,
       morphemes: false,
+      translation: true,
     },
     waveformHidden: [],
     fullscreen: false,

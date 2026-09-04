@@ -820,7 +820,11 @@ export function mountApp(root: HTMLElement): void {
   });
 
   // --- layout --------------------------------------------------------------
-  const resize = (): void => staff.resize();
+  const resize = (): void => {
+    staff.resize();
+    // Rotating a phone changes which way the words have to fit.
+    fullscreen.resize();
+  };
   window.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(staff.element.parentElement ?? staff.element);
   requestAnimationFrame(resize);

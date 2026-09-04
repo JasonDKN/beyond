@@ -52,6 +52,15 @@ const SWIPE_RATIO = 1.6;
 const DOUBLE_TAP_MS = 320;
 
 /**
+ * How far the auto-fit will shrink the words before giving up.
+ *
+ * Past this they are too small to read at arm's length while your mouth is
+ * busy, which is the whole job — better to let the stage scroll than to keep
+ * shrinking into something nobody can use.
+ */
+const MIN_SCALE = 0.55;
+
+/**
  * The legend, in the language of whatever you are holding.
  *
  * Keys on a desktop, gestures on a phone — and never both, because a legend
@@ -316,14 +325,36 @@ export class FullscreenView {
       { passive: true },
     );
 
+    /*
+     * A cancelled gesture is not a tap.
+     *
+     * The browser cancels a pointer when it decides the gesture is really a
+     * scroll, and a cancelled pointer never raises `pointerup`. Without this,
+     * a half-finished drag left the start coordinates lying around for the
+     * next event to measure against.
+     */
+    this.#stage.addEventListener(
+      'pointercancel',
+      () => {
+        startX = Number.NaN;
+        lastTapAt = 0;
+      },
+      { passive: true },
+    );
+
     this.#stage.addEventListener(
       'pointerup',
       (event: PointerEvent) => {
+        if (Number.isNaN(startX)) return;
         const dx = event.clientX - startX;
         const dy = event.clientY - startY;
 
+        // Far enough for this screen: a fixed 60px is a long way on a phone
+        // and nothing on a desktop, so it scales, within reason.
+        const far = Math.min(SWIPE_PX, Math.max(28, this.#stage.clientWidth * 0.12));
+
         // A swipe: far enough, and clearly sideways rather than a scroll.
-        if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy) * SWIPE_RATIO) {
+        if (Math.abs(dx) > far && Math.abs(dx) > Math.abs(dy) * SWIPE_RATIO) {
           // Leftwards moves forward, the way a page of anything turns.
           this.#callbacks.onStepLine(dx < 0 ? 1 : -1);
           lastTapAt = 0;
@@ -349,6 +380,7 @@ export class FullscreenView {
       ['pronounced', 'Spoken'],
       ['ipa', 'IPA'],
       ['respelling', 'Read-along'],
+      ['translation', 'Meaning'],
     ];
     return layers.map(([key, label]) => {
       const button = el(
@@ -409,6 +441,7 @@ export class FullscreenView {
     if (key !== this.#renderedKey) {
       this.#renderedKey = key;
       this.#draw(state, active);
+      this.#fit();
     }
 
     this.#wipe(state, active);
@@ -494,11 +527,23 @@ export class FullscreenView {
     });
     this.#wordNodes.set(index, nodes);
 
-    return el(
-      'div',
-      { class: `fs__line fs__line--${offset === 0 ? 'now' : offset < 0 ? 'past' : 'next'}` },
-      ...words,
-    );
+    const where = offset === 0 ? 'now' : offset < 0 ? 'past' : 'next';
+    const row = el('div', { class: 'fs__words' }, ...words);
+
+    /*
+     * The meaning, under the line being sung and only that one.
+     *
+     * On every line it would be a wall of English competing with the Korean
+     * for the same eye, which is the opposite of the point — you are here to
+     * read the Korean. Under the current line it answers the question at the
+     * moment you have it, and disappears again as the song moves on.
+     */
+    const meaning =
+      where === 'now' && state.layers.translation && line.translation
+        ? el('p', { class: 'fs__meaning', lang: 'en' }, line.translation)
+        : null;
+
+    return el('div', { class: `fs__line fs__line--${where}` }, row, meaning);
   }
 
   /** The same wipe the score uses, driven by the same word timings. */
@@ -538,6 +583,47 @@ export class FullscreenView {
     this.#player.playbackRate = clamped;
     this.#rate.value = String(clamped);
     this.#rateReadout.textContent = `${clamped.toFixed(2)}×`;
+  }
+
+  /**
+   * Shrink the words until they fit the screen they are actually on.
+   *
+   * The sizes are written against viewport width, which is a guess about
+   * height — and the guess fails wherever the two come apart: a phone in
+   * landscape, a long line that wraps to three rows, a word carrying four
+   * layers where its neighbours carry two. `safe center` means the overflow
+   * can now be scrolled to rather than lost, but scrolling is the wrong answer
+   * on a screen you are reading while singing.
+   *
+   * So this measures what actually happened and steps the type down until it
+   * fits. Cheap, because it only runs when the window of lines changes, and
+   * honest, because it reacts to the real layout instead of predicting it.
+   *
+   * There is a floor: past a point the words are too small to read while your
+   * mouth is busy, and scrolling is the better failure.
+   */
+  #fit(): void {
+    const stage = this.#stage;
+    let scale = 1;
+    stage.style.setProperty('--fs-scale', '1');
+
+    // A handful of steps is plenty to cross the range, and bounded so a
+    // pathological line can never spin here.
+    for (let step = 0; step < 8; step += 1) {
+      if (stage.scrollHeight <= stage.clientHeight + 1) break;
+      scale -= 0.07;
+      if (scale < MIN_SCALE) {
+        scale = MIN_SCALE;
+        stage.style.setProperty('--fs-scale', String(scale));
+        break;
+      }
+      stage.style.setProperty('--fs-scale', scale.toFixed(2));
+    }
+  }
+
+  /** Re-fit after the screen changes shape — rotation, mostly. */
+  resize(): void {
+    if (!this.element.hidden) this.#fit();
   }
 
   /** Bring the controls back, and start the clock on hiding them again. */

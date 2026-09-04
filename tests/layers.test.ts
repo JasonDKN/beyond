@@ -14,6 +14,7 @@ const show = (on: Partial<DisplayLayers>): DisplayLayers => ({
   ipa: false,
   respelling: false,
   morphemes: false,
+  translation: false,
   ...on,
 });
 

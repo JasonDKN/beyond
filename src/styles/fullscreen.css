@@ -12,6 +12,12 @@
  */
 
 .fs {
+  /*
+   * How far the words have been shrunk to fit this screen, set by the view
+   * after it measures the real layout. 1 means everything fitted as written.
+   */
+  --fs-scale: 1;
+
   position: fixed;
   inset: 0;
   z-index: 60;
@@ -30,13 +36,27 @@
 .fs__stage {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  /* `safe` so a stage taller than the screen scrolls from its top rather than
-     hiding the first line above the edge — the same trap the library fell into. */
-  align-content: safe center;
-  gap: clamp(0.6rem, 2.4vh, 1.6rem);
+  /*
+   * `justify-content`, because this column's main axis is the vertical one.
+   *
+   * It used to say `align-content: safe center`, which on a single-line column
+   * flex container does nothing at all — so the real vertical centring was a
+   * plain `center` with no `safe`, and content taller than the stage was
+   * centred by overflowing equally in both directions. The top half went above
+   * the scroll origin, where scrolling cannot reach it. That is what was
+   * cutting the words off: not a size problem, an unreachable one.
+   *
+   * `safe` gives up on centring the moment it would overflow and packs to the
+   * start instead, so everything stays inside the scrollable area.
+   */
+  justify-content: safe center;
+  gap: clamp(0.4rem, 2.2vh, 1.6rem);
   overflow-y: auto;
-  padding: clamp(1rem, 4vh, 3rem) clamp(1rem, 5vw, 5rem);
+  padding: clamp(0.75rem, 3vh, 3rem) clamp(0.75rem, 4vw, 5rem);
+  /* Vertical panning stays the browser's; sideways is ours. Without this the
+     browser claims the whole gesture on a touchscreen and a swipe never
+     completes — it is cancelled, not finished, so `pointerup` never fires. */
+  touch-action: pan-y;
   text-align: center;
 }
 
@@ -48,10 +68,35 @@
 
 .fs__line {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: opacity var(--duration-mid) var(--ease-out);
+}
+
+/* The words themselves, wrapping as a row inside the line. */
+.fs__words {
+  display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.15em 0.55em;
-  transition: opacity var(--duration-mid) var(--ease-out);
+}
+
+/*
+ * What the line means, in your own words.
+ *
+ * Set in your own alphabet and your own language, deliberately quieter and
+ * smaller than everything above it: it is the answer to a question, not the
+ * thing being learned. Sized in `em` so it tracks the line it belongs to and
+ * shrinks with the auto-fit like everything else.
+ */
+.fs__meaning {
+  margin: 0.5em 0 0;
+  max-width: 34ch;
+  font-family: var(--font-ui);
+  font-size: 0.32em;
+  line-height: 1.4;
+  color: var(--paper-dim);
+  text-wrap: balance;
 }
 
 .fs__word {
@@ -96,12 +141,12 @@
  */
 
 .fs.is-teleprompter .fs__line--now {
-  font-size: clamp(1.9rem, 6.4vw, 4.4rem);
+  font-size: calc(clamp(1.9rem, 6.4vw, 4.4rem) * var(--fs-scale, 1));
   opacity: 1;
 }
 
 .fs.is-teleprompter .fs__line--next {
-  font-size: clamp(1.05rem, 2.8vw, 2rem);
+  font-size: calc(clamp(1.05rem, 2.8vw, 2rem) * var(--fs-scale, 1));
   opacity: 0.5;
 }
 
@@ -117,12 +162,12 @@
  */
 
 .fs.is-karaoke .fs__line {
-  font-size: clamp(1.1rem, 3.1vw, 2.1rem);
+  font-size: calc(clamp(1.1rem, 3.1vw, 2.1rem) * var(--fs-scale, 1));
   opacity: 0.42;
 }
 
 .fs.is-karaoke .fs__line--now {
-  font-size: clamp(1.5rem, 4.4vw, 3rem);
+  font-size: calc(clamp(1.5rem, 4.4vw, 3rem) * var(--fs-scale, 1));
   opacity: 1;
 }
 
@@ -476,19 +521,19 @@
  */
 @media (max-width: 620px) and (min-height: 481px) {
   .fs.is-teleprompter .fs__line--now {
-    font-size: clamp(2.4rem, 9vw, 3.4rem);
+    font-size: calc(clamp(2.4rem, 9vw, 3.4rem) * var(--fs-scale, 1));
   }
 
   .fs.is-teleprompter .fs__line--next {
-    font-size: clamp(1.25rem, 4.6vw, 1.8rem);
+    font-size: calc(clamp(1.25rem, 4.6vw, 1.8rem) * var(--fs-scale, 1));
   }
 
   .fs.is-karaoke .fs__line {
-    font-size: clamp(1.3rem, 5vw, 1.8rem);
+    font-size: calc(clamp(1.3rem, 5vw, 1.8rem) * var(--fs-scale, 1));
   }
 
   .fs.is-karaoke .fs__line--now {
-    font-size: clamp(1.9rem, 7.4vw, 2.6rem);
+    font-size: calc(clamp(1.9rem, 7.4vw, 2.6rem) * var(--fs-scale, 1));
   }
 }
 
