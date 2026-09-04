@@ -1,6 +1,6 @@
 import type { Player } from '@/audio/player';
 import type { FullscreenLayout, State, Store } from '@/core/store';
-import type { PhoneticLine } from '@/core/types';
+import type { PhoneticLine, PhoneticWord } from '@/core/types';
 import { el, formatClock, ICONS, seekIcon, svgIcon } from './dom';
 import { visibleLayers, type LayerKind } from './layers';
 
@@ -381,6 +381,7 @@ export class FullscreenView {
       ['ipa', 'IPA'],
       ['respelling', 'Read-along'],
       ['translation', 'Meaning'],
+      ['morphemes', 'Grammar'],
     ];
     return layers.map(([key, label]) => {
       const button = el(
@@ -522,6 +523,12 @@ export class FullscreenView {
         ),
       );
       const node = el('span', { class: 'fs__word' }, ...stack);
+      // Grammar goes under the word it belongs to, and only on the line being
+      // sung — see the note on `morphemeBlock`.
+      if (offset === 0 && state.layers.morphemes) {
+        const parts = morphemeBlock(word);
+        if (parts) node.appendChild(parts);
+      }
       nodes.push(node);
       return node;
     });
@@ -680,6 +687,49 @@ export function saveFullscreenLayout(layout: FullscreenLayout): void {
   } catch {
     /* Private browsing — it still works, it just won't be remembered. */
   }
+}
+
+/**
+ * How a word is built, under the word.
+ *
+ * Korean glues grammar onto the end of a stem, so most of what stops a learner
+ * reading a line is not vocabulary but not knowing where the word stops and
+ * the grammar starts. Beyond already works that out for the inspector; this is
+ * the same information, laid out for a screen you are reading at arm's length.
+ *
+ * The inspector stacks one morpheme per row, which is right in a side panel
+ * and impossible here — six words of three morphemes each would be eighteen
+ * rows under a single line. So the pieces sit in a row, tinted by what they
+ * are, with the grammar's glosses gathered underneath on one line. The colours
+ * are the app's existing ones: mint for the stem, violet for particles, sky
+ * for endings and suffixes, which is the same language the inspector speaks.
+ *
+ * Returns nothing for a word that is all stem. "This word is one piece" is
+ * true, unhelpful, and not worth a line of screen.
+ */
+function morphemeBlock(word: PhoneticWord): HTMLElement | null {
+  const parts = word.morphemes ?? [];
+  if (parts.length < 2) return null;
+
+  const pieces = el(
+    'span',
+    { class: 'fs__morphs' },
+    ...parts.map((part) => el('span', { class: `fs__morph fs__morph--${part.kind}` }, part.text)),
+  );
+
+  // Only the grammar is glossed. The stem's meaning is what the line's
+  // translation is for, and repeating it here would crowd out the part you
+  // cannot get anywhere else.
+  const glosses = parts
+    .filter((part) => part.kind !== 'stem' && part.gloss)
+    .map((part) => part.gloss);
+
+  return el(
+    'span',
+    { class: 'fs__grammar' },
+    pieces,
+    glosses.length ? el('span', { class: 'fs__morph-gloss' }, glosses.join(' · ')) : null,
+  );
 }
 
 function seekChip(seconds: number, back: boolean, onClick: () => void): HTMLButtonElement {
